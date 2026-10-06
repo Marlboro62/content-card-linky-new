@@ -9,7 +9,7 @@
  * entity: sensor.linky_<pdl>_consumption
  */
 
-const CARD_VERSION = "0.2.1";
+const CARD_VERSION = "0.2.2";
 
 /* ---------------------------------------------------------------- données */
 
@@ -28,6 +28,15 @@ const MED = {
       if (kind === "bool") return s === "true";
       return s;
     });
+  },
+
+  /** "2026-10-05" -> date locale (new Date() la lirait en UTC) */
+  date(value) {
+    if (!value) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value).trim());
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
   },
 
   num(value) {
@@ -52,12 +61,12 @@ const MED = {
       let t = total[i] ?? null;
       if (t === null && h !== null && p !== null) t = h + p;
       return {
-        date: d ? new Date(d) : null,
+        date: MED.date(d),
         total: t,
         hc: h,
         hp: p,
         mp: mp[i] ?? null,
-        mpTime: mpTime[i] ? new Date(mpTime[i]) : null,
+        mpTime: MED.date(mpTime[i]),
         mpOver: mpOver[i] === true,
         tempo: tempo[i] ? tempo[i].toLowerCase() : null,
       };
@@ -70,6 +79,13 @@ const MED = {
     const p = prices[day.tempo];
     if (!p || p.hc === null || p.hp === null) return null;
     return day.hc * p.hc + day.hp * p.hp;
+  },
+
+  /** Répartition HC/HP estimée d'un jour sans détail, d'après la part HP habituelle. */
+  estimate(day, hpPct) {
+    if (day.total === null || hpPct === null || hpPct < 0 || hpPct > 100) return null;
+    const hp = (day.total * hpPct) / 100;
+    return { hc: day.total - hp, hp };
   },
 
   /** Jours Tempo restants : quota - used (le champ remaining de la v2 n'est pas fiable). */
@@ -205,7 +221,12 @@ class ContentCardLinkyV2 extends HTMLElement {
     const a = main.attributes || {};
     const all = MED.days(a);
     const prices = c.show_cost ? this._prices() : null;
-    all.forEach((d) => (d.cost = MED.cost(d, prices)));
+    const hpPct = MED.num(a.peak_offpeak_percent);
+    all.forEach((d) => {
+      d.est = d.hc === null || d.hp === null ? MED.estimate(d, hpPct) : null;
+      d.cost = MED.cost(d, prices);
+      d.costEst = d.cost === null && d.est ? MED.cost({ ...d, ...d.est }, prices) : null;
+    });
 
     const shown = all.slice(0, Math.max(1, Math.min(c.days, all.length)));
     if (this._selected >= shown.length) this._selected = 0;
@@ -215,12 +236,12 @@ class ContentCardLinkyV2 extends HTMLElement {
     this.shadowRoot.innerHTML = `${STYLE}<ha-card class="${mode}">
       ${this._header(pdl)}
       ${this._hero(all[0], a)}
-      ${this._tiles(a)}
+      ${this._tiles(a, all)}
       ${this._chart(shown)}
-      ${this._detail(shown[this._selected])}
+      ${this._selected > 0 ? this._detail(shown[this._selected]) : ""}
       ${this._power(shown)}
       ${this._ecowatt()}
-      ${this._footer(all, prices)}
+      ${this._footer(all, prices, hpPct)}
     </ha-card>`;
   }
 
@@ -269,8 +290,14 @@ class ContentCardLinkyV2 extends HTMLElement {
         ${evo !== null ? `<div class="evo ${evo > 0 ? "up" : "down"}">${evo > 0 ? "+" : ""}${fmt(evo, 1)} % par rapport à la veille</div>` : ""}
       </div>
       <div class="hero-r">
-        <div class="cost ${day.cost === null ? "none" : ""}">${day.cost !== null ? euro(day.cost) : "—"}</div>
-        <div class="cost-l">${day.cost !== null ? "coût de la journée" : "coût disponible avec le détail HC/HP"}</div>
+        ${
+          day.cost !== null
+            ? `<div class="cost">${euro(day.cost)}</div><div class="cost-l">coût de la journée</div>`
+            : day.costEst !== null
+              ? `<div class="cost est">≈ ${euro(day.costEst)}</div><div class="cost-l">coût estimé, en attendant le détail HC/HP</div>`
+              : `<div class="cost none">—</div><div class="cost-l">coût disponible avec le détail HC/HP</div>`
+        }
+        ${day.mp !== null ? `<div class="hero-p">Pic ${fmt(day.mp, 2)} kVA${day.mpTime ? ` à ${day.mpTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}</div>` : ""}
       </div>
       ${
         split
@@ -283,17 +310,17 @@ class ContentCardLinkyV2 extends HTMLElement {
 
   /* ------------------------------------------------------------ tuiles */
 
-  _tile(label, value, unit, evo, note) {
+  _tile(label, value, unit, evo, note, evoSuffix = "") {
     const e = MED.num(evo);
     return `<div class="tile">
       <div class="tile-l">${cap(label)}</div>
       <div class="tile-v">${value}<span>${unit}</span></div>
-      ${e !== null ? `<div class="evo ${e > 0 ? "up" : "down"}">${e > 0 ? "+" : ""}${fmt(e, 1)} %</div>` : ""}
+      ${e !== null ? `<div class="evo ${e > 0 ? "up" : "down"}">${e > 0 ? "+" : ""}${fmt(e, 1)} %${evoSuffix}</div>` : ""}
       ${note ? `<div class="tile-n">${note}</div>` : ""}
     </div>`;
   }
 
-  _tiles(a) {
+  _tiles(a, all) {
     const now = new Date();
     const month = (offset, year = 0) =>
       new Date(now.getFullYear() + year, now.getMonth() + offset, 1).toLocaleDateString("fr-FR", { month: "long", year: year ? "numeric" : undefined });
@@ -304,8 +331,21 @@ class ContentCardLinkyV2 extends HTMLElement {
     const cy = MED.num(a.current_year);
     const cyLy = MED.num(a.current_year_last_year);
     const hp = MED.num(a.peak_offpeak_percent);
+    // Projection fin de mois : comparer 5 jours à un mois complet n'a pas de sens.
+    const last = all.find((d) => d.total !== null && d.date);
+    let proj = null;
+    if (cm !== null && last && last.date.getMonth() === now.getMonth() && last.date.getFullYear() === now.getFullYear()) {
+      const done = last.date.getDate();
+      const len = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      if (done >= 3) proj = (cm / done) * len;
+    }
+    const cmEvo = proj !== null && cmLy ? ((proj - cmLy) / cmLy) * 100 : null;
+    const cmNote = [
+      proj !== null ? `Projection : ${fmt(proj, 0)} kWh` : "",
+      cmLy !== null ? `${cap(month(0, -1))} : ${fmt(cmLy, 0)} kWh` : "",
+    ].filter(Boolean).join("<br>");
     return `<section class="tiles">
-      ${this._tile(`${month(0)} en cours`, fmt(cm, 0), "kWh", null, cmLy !== null ? `${cap(month(0, -1))} complet : ${fmt(cmLy, 0)} kWh` : "")}
+      ${this._tile(`${month(0)} en cours`, fmt(cm, 0), "kWh", cmEvo, cmNote, cmEvo !== null ? " sur projection" : "")}
       ${this._tile(month(-1), fmt(lm, 0), "kWh", a.monthly_evolution, lmLy !== null ? `${cap(month(-1, -1))} : ${fmt(lmLy, 0)} kWh` : "")}
       ${this._tile(`Année ${now.getFullYear()}`, fmt(cy, 0), "kWh", a.yearly_evolution, cyLy !== null ? `À date en ${now.getFullYear() - 1} : ${fmt(cyLy, 0)} kWh` : "")}
       ${this._tile("Part heures pleines", fmt(hp, 1), "%", null, "de la consommation")}
@@ -331,6 +371,12 @@ class ContentCardLinkyV2 extends HTMLElement {
           const hHp = (d.hp / max) * H;
           body = `<rect class="hc" x="${x}" y="${H - hHc}" width="${w}" height="${hHc}"/>
                   <rect class="hp" x="${x}" y="${H - hHc - hHp}" width="${w}" height="${hHp}"/>`;
+        } else if (d.est) {
+          const hHc = (d.est.hc / max) * H;
+          const hHp = (d.est.hp / max) * H;
+          body = `<g class="est"><title>Total ${fmt(d.total, 2)} kWh, répartition HC/HP estimée</title>
+                  <rect class="hc" x="${x}" y="${H - hHc}" width="${w}" height="${hHc}"/>
+                  <rect class="hp" x="${x}" y="${H - hHc - hHp}" width="${w}" height="${hHp}"/></g>`;
         } else if (d.total !== null) {
           const h = (d.total / max) * H;
           body = `<rect class="partial" x="${x}" y="${H - h}" width="${w}" height="${h}"/>`;
@@ -363,6 +409,7 @@ class ContentCardLinkyV2 extends HTMLElement {
     if (d.hc !== null && d.hp !== null) parts.push(`HC ${fmt(d.hc, 2)}`, `HP ${fmt(d.hp, 2)}`);
     else parts.push("détail HC/HP en attente");
     if (d.cost !== null) parts.push(euro(d.cost));
+    else if (d.costEst !== null) parts.push(`≈ ${euro(d.costEst)}`);
     const peak =
       d.mp !== null
         ? `Pic ${fmt(d.mp, 2)} kVA${d.mpTime ? ` à ${d.mpTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}${d.mpOver ? ' <em class="warn">dépassement</em>' : ""}`
@@ -386,7 +433,7 @@ class ContentCardLinkyV2 extends HTMLElement {
     const when = top.date ? top.date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" }).replace(/^1 /, "1er ") : "";
     const hour = top.mpTime ? top.mpTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
     return `<section class="power ${over ? "is-over" : ""}">
-      <div class="power-t"><span>Puissance maximale</span><b>${fmt(top.mp, 2)} kVA</b></div>
+      <div class="power-t"><span>Puissance maximale sur ${days.length} jours</span><b>${fmt(top.mp, 2)} kVA</b></div>
       ${pct !== null ? `<div class="gauge"><i style="width:${pct}%"></i></div>` : ""}
       <div class="power-n">Le ${esc(when)}${hour ? ` à ${hour}` : ""}${sub ? `, pour ${fmt(sub, 0)} kVA souscrits` : ""}${
         over ? ". Dépassement de la puissance souscrite sur la période." : ""
@@ -399,17 +446,25 @@ class ContentCardLinkyV2 extends HTMLElement {
   _ecowatt() {
     const st = this._state(this._config.ecowatt);
     if (!st || ["unknown", "unavailable", ""].includes(String(st.state))) return "";
-    const msg = st.attributes?.message || st.state;
-    return `<section class="eco"><span class="eco-l">EcoWatt</span><span>${esc(msg)}</span></section>`;
+    const LEVELS = {
+      1: { cls: "e-ok", label: "Pas d'alerte" },
+      2: { cls: "e-warn", label: "Système électrique tendu" },
+      3: { cls: "e-alert", label: "Système très tendu, coupures possibles" },
+    };
+    const lvl = LEVELS[Math.round(Number(st.state))];
+    const msg = st.attributes?.message || (lvl ? lvl.label : st.state);
+    return `<section class="eco ${lvl ? lvl.cls : ""}" title="${esc(this._config.ecowatt)} : ${esc(st.state)}">
+      <span class="eco-l">EcoWatt</span><span class="dot"></span><span>${esc(msg)}</span></section>`;
   }
 
   /* ----------------------------------------------------------- pied */
 
-  _footer(all, prices) {
+  _footer(all, prices, hpPct) {
     const last = all.find((d) => d.total !== null && d.date);
     const bits = [];
     if (last) bits.push(`Données Enedis jusqu'au ${last.date.toLocaleDateString("fr-FR")}`);
     if (this._config.show_cost) bits.push(prices ? "coûts estimés hors abonnement, au prix Tempo du jour" : "prix Tempo introuvables, coûts masqués");
+    if (all.some((d) => d.est) && hpPct !== null) bits.push(`barres claires : répartition HC/HP estimée (${fmt(hpPct, 1)} % HP)`);
     return `<footer>${bits.join(", ")}.</footer>`;
   }
 }
@@ -455,6 +510,8 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .hero-r { text-align: right; align-self: center; }
 .cost { font-size: 1.6rem; font-weight: 700; color: var(--med-green); }
 .cost.none { color: var(--med-muted); }
+.cost.est { color: var(--med-text); opacity: .85; }
+.hero-p { font-size: .75rem; color: var(--med-muted); margin-top: 6px; }
 .cost-l { font-size: .75rem; color: var(--med-muted); max-width: 160px; }
 .evo { font-size: .8rem; font-weight: 600; margin-top: 2px; }
 .evo.up { color: var(--med-up); } .evo.down { color: var(--med-down); }
@@ -479,7 +536,8 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .legend .k-hc { background: var(--med-hc); } .legend .k-hp { background: var(--med-hp); }
 .chart svg { width: 100%; height: 130px; display: block; }
 .chart rect.hc { fill: var(--med-hc); } .chart rect.hp { fill: var(--med-hp); }
-.chart rect.partial { fill: var(--med-line); opacity: .9; }
+.chart rect.partial { fill: var(--med-muted); opacity: .35; }
+.chart g.est { opacity: .45; }
 .chart rect.sel { fill: rgba(255,255,255,.06); }
 .chart rect.hit { fill: transparent; cursor: pointer; }
 .days { display: grid; margin-top: 4px; }
@@ -507,7 +565,10 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .is-over .gauge i { background: var(--t-red); }
 .power-n { font-size: .75rem; color: var(--med-muted); }
 
-.eco { margin: 10px 12px 0; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--med-line); font-size: .82rem; display: flex; gap: 10px; }
+.eco { margin: 10px 12px 0; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--med-line); font-size: .82rem; display: flex; align-items: center; gap: 8px; }
+.eco.e-ok .dot { background: var(--med-down); }
+.eco.e-warn { border-color: #f0a33a; } .eco.e-warn .dot { background: #f0a33a; }
+.eco.e-alert { border-color: var(--t-red); } .eco.e-alert .dot { background: var(--t-red); }
 .eco-l { color: var(--med-muted); }
 footer { padding: 10px 18px 14px; font-size: .7rem; color: var(--med-muted); }
 .empty { padding: 18px; display: flex; flex-direction: column; gap: 6px; font-size: .9rem; }
