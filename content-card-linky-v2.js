@@ -9,7 +9,7 @@
  * entity: sensor.linky_<pdl>_consumption
  */
 
-const CARD_VERSION = "0.2.2";
+const CARD_VERSION = "0.2.3";
 
 /* ---------------------------------------------------------------- données */
 
