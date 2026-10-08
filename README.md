@@ -2,22 +2,22 @@
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-d32f2f?logo=buymeacoffee&logoColor=white&style=flat)](https://buymeacoffee.com/marlboro62) [![Ko-fi](https://img.shields.io/badge/Ko--fi-ff5e5b?logo=kofi&logoColor=white&style=flat)](https://ko-fi.com/nothing_one)
 
-Carte Lovelace pour **[MyElectricalData v2](https://github.com/MyElectricalData/myelectricaldata_new)** (mode client) : consommation Linky, heures creuses / heures pleines, Tempo, coût estimé et puissance maximale, dans le style de l'interface v2.
+Carte Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalData/myelectricaldata_new)** (mode client) : consommation Linky, heures creuses / heures pleines, Tempo, coût estimé et puissance maximale, dans le style de l'interface MyElectricalData.
 
-![Carte Enedis V2](images/apercu.png)
+![Carte Enedis Linky New](images/apercu.png)
 
-Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de la v2. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
+Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de MyElectricalData new. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
-## 🧩 Fait partie de l'écosystème MyElectricalData v2
+## 🧩 Fait partie de l'écosystème MyElectricalData new
 
-Ces projets sont **non officiels**, maintenus par Marlboro62, sans lien avec l'équipe MyElectricalData. Ils s'appuient sur le [mode client de MyElectricalData v2](https://github.com/MyElectricalData/myelectricaldata_new).
+Ces projets sont **non officiels**, maintenus par Marlboro62, sans lien avec l'équipe MyElectricalData. Ils s'appuient sur le [mode client de MyElectricalData new](https://github.com/MyElectricalData/myelectricaldata_new), relié à la passerelle [www.v2.myelectricaldata.fr](https://www.v2.myelectricaldata.fr).
 
 | Projet | Rôle |
 | --- | --- |
-| [Add-on Home Assistant](https://github.com/Marlboro62/hassio-addons) | Installe le mode client v2 dans Home Assistant (interface web, synchro Linky/Tempo, PostgreSQL intégré) |
-| [Script Proxmox (LXC)](https://github.com/Marlboro62/myelectricaldata-proxmox) | Déploie le mode client v2 dans un conteneur LXC Proxmox, sans Docker |
+| [Add-on Home Assistant](https://github.com/Marlboro62/hassio-addons) | Installe le mode client dans Home Assistant (interface web, synchro Linky/Tempo, PostgreSQL intégré) |
+| [Script Proxmox (LXC)](https://github.com/Marlboro62/myelectricaldata-proxmox) | Déploie le mode client dans un conteneur LXC Proxmox, sans Docker |
 | **Carte Lovelace (ce dépôt)** | Affiche conso, Tempo, coût et puissance max dans un tableau de bord Home Assistant |
-| [Dashboards Grafana](https://github.com/Marlboro62/myelectricaldata-v2-grafana) | Analyse la base PostgreSQL de l'add-on (Linky, Tempo, coûts) |
+| [Dashboards Grafana](https://github.com/Marlboro62/myelectricaldata-new-grafana) | Analyse la base PostgreSQL de l'add-on (Linky, Tempo, coûts) |
 
 ## Ce qu'affiche la carte
 
@@ -32,8 +32,9 @@ Les données pas encore publiées par Enedis sont signalées comme telles, au li
 
 ## Prérequis
 
-- MyElectricalData v2 en mode client (Docker, [add-on Home Assistant](https://github.com/Marlboro62/hassio-addons) ou [script Proxmox](https://github.com/Marlboro62/myelectricaldata-proxmox)) ;
-- l'export **Home Assistant** activé dans l'interface MyElectricalData (page Home Assistant : URL de Home Assistant et jeton d'accès longue durée).
+- MyElectricalData new en mode client (Docker, [add-on Home Assistant](https://github.com/Marlboro62/hassio-addons) ou [script Proxmox](https://github.com/Marlboro62/myelectricaldata-proxmox)) ;
+- l'export **Home Assistant** activé dans l'interface MyElectricalData (page Home Assistant : URL de Home Assistant et jeton d'accès longue durée) ;
+- une **offre** sélectionnée sur la carte de votre PDL dans l'interface MyElectricalData, pour que les prix soient publiés.
 
 L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_today`, `sensor.rte_tempo_tomorrow`, `sensor.edf_tempo_tempo_info` et les prix `sensor.edf_tempo_price_*`.
 
@@ -42,14 +43,16 @@ L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_tod
 ### Avec HACS
 
 1. HACS, menu ⋮, **Dépôts personnalisés**.
-2. Ajoutez `https://github.com/Marlboro62/content-card-linky-v2`, catégorie **Tableau de bord** (Dashboard).
-3. Installez **Carte Enedis V2**, puis rechargez la page (Ctrl+F5).
+2. Ajoutez `https://github.com/Marlboro62/content-card-linky-new`, catégorie **Tableau de bord** (Dashboard).
+3. Installez **Carte Enedis Linky New**, puis rechargez la page (Ctrl+F5).
 
 ### Manuellement
 
 1. Copiez `content-card-linky-v2.js` dans `/config/www/`.
-2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-v2.js?v=0.2.1`, type **Module JavaScript**.
+2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-v2.js?v=0.2.2`, type **Module JavaScript**.
 3. Rechargez la page (Ctrl+F5). Changez le `?v=` à chaque mise à jour du fichier.
+
+> Le nom du fichier et le type de carte (`content-card-linky-v2`) restent inchangés, pour ne pas casser les tableaux de bord existants.
 
 ## Configuration
 
@@ -69,12 +72,12 @@ theme: v2
 | `title` | `Linky` | Titre affiché |
 | `days` | `14` | Historique du graphique : `7`, `14` ou `31` jours |
 | `subscribed_power` | aucun | Puissance souscrite en kVA, pour la jauge de puissance maximale |
-| `theme` | `v2` | `v2` : style bleu nuit de MyElectricalData v2 ; `ha` : suit le thème clair ou sombre de Home Assistant |
+| `theme` | `v2` | `v2` : style bleu nuit de l'interface MyElectricalData ; `ha` : suit le thème clair ou sombre de Home Assistant |
 | `show_cost` | `true` | Afficher les coûts estimés |
 | `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
 | `tempo_today` | `sensor.rte_tempo_today` | Couleur Tempo du jour |
 | `tempo_tomorrow` | `sensor.rte_tempo_tomorrow` | Couleur Tempo du lendemain |
-| `tempo_info` | `sensor.edf_tempo_tempo_info` | Jours Tempo restants |
+| `tempo_info` | `sensor.edf_tempo_tempo_info` | Jours Tempo restants (selon votre installation, l'entité peut s'appeler `sensor.edf_tempo_info`) |
 | `ecowatt` | `sensor.rte_ecowatt_j0` | Signal EcoWatt (bloc masqué si indisponible) |
 | `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo |
 
