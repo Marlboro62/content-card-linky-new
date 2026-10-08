@@ -1,12 +1,14 @@
 /**
- * content-card-linky-v2 — « Carte Enedis V2 »
+ * content-card-linky-new — « Carte Enedis Linky New »
  *
- * Carte Lovelace pour l'export Home Assistant de MyElectricalData v2 (mode client).
+ * Carte Lovelace pour l'export Home Assistant de MyElectricalData new (mode client).
  * Reprend l'esprit de content-card-linky (saniho, puis MyElectricalData),
- * réécrite pour les entités publiées par la v2 et pour le style de son interface.
+ * réécrite pour les entités publiées par MyElectricalData new et pour le style de son interface.
  *
- * type: custom:content-card-linky-v2
+ * type: custom:content-card-linky-new
  * entity: sensor.linky_<pdl>_consumption
+ *
+ * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
 const CARD_VERSION = "0.2.3";
@@ -73,7 +75,7 @@ const MED = {
     });
   },
 
-  /** Coût d'un jour à partir des prix Tempo publiés par la v2. */
+  /** Coût d'un jour à partir des prix Tempo publiés par MyElectricalData. */
   cost(day, prices) {
     if (!prices || day.hc === null || day.hp === null || !day.tempo) return null;
     const p = prices[day.tempo];
@@ -88,7 +90,7 @@ const MED = {
     return { hc: day.total - hp, hp };
   },
 
-  /** Jours Tempo restants : quota - used (le champ remaining de la v2 n'est pas fiable). */
+  /** Jours Tempo restants : quota - used (le champ remaining de MyElectricalData n'est pas fiable). */
   tempoLeft(info) {
     if (!info) return null;
     const out = {};
@@ -138,9 +140,9 @@ const DEFAULTS = {
   show_pdl: true,
 };
 
-class ContentCardLinkyV2 extends HTMLElement {
+class ContentCardLinkyNew extends HTMLElement {
   static getConfigElement() {
-    return document.createElement("content-card-linky-v2-editor");
+    return document.createElement("content-card-linky-new-editor");
   }
 
   static getStubConfig(hass) {
@@ -213,7 +215,7 @@ class ContentCardLinkyV2 extends HTMLElement {
     if (!main) {
       this.shadowRoot.innerHTML = `${STYLE}<ha-card class="${mode}"><div class="empty">
         <strong>Entité introuvable : ${esc(c.entity)}</strong>
-        <span>Activez l'export Home Assistant dans l'interface MyElectricalData v2, puis choisissez le capteur
+        <span>Activez l'export Home Assistant dans l'interface MyElectricalData, puis choisissez le capteur
         <code>sensor.linky_&lt;pdl&gt;_consumption</code> dans la configuration de la carte.</span></div></ha-card>`;
       return;
     }
@@ -618,7 +620,7 @@ const SCHEMA = [
       select: {
         mode: "dropdown",
         options: [
-          { value: "v2", label: "Style MyElectricalData v2 (bleu nuit)" },
+          { value: "v2", label: "Style MyElectricalData (bleu nuit)" },
           { value: "ha", label: "Thème Home Assistant (clair ou sombre)" },
         ],
       },
@@ -648,7 +650,7 @@ const LABELS = {
   price_prefix: "Préfixe des capteurs de prix Tempo",
 };
 
-class ContentCardLinkyV2Editor extends HTMLElement {
+class ContentCardLinkyNewEditor extends HTMLElement {
   setConfig(config) {
     this._config = { ...config };
     this._draw();
@@ -682,18 +684,22 @@ class ContentCardLinkyV2Editor extends HTMLElement {
 /* ---------------------------------------------------------- enregistrement */
 
 if (typeof customElements !== "undefined") {
-  if (!customElements.get("content-card-linky-v2")) customElements.define("content-card-linky-v2", ContentCardLinkyV2);
-  if (!customElements.get("content-card-linky-v2-editor")) customElements.define("content-card-linky-v2-editor", ContentCardLinkyV2Editor);
+  const define = (name, cls) => { if (!customElements.get(name)) customElements.define(name, cls); };
+  define("content-card-linky-new", ContentCardLinkyNew);
+  define("content-card-linky-new-editor", ContentCardLinkyNewEditor);
+  // Compatibilité : les tableaux de bord créés avec l'ancien type continuent de fonctionner.
+  define("content-card-linky-v2", class extends ContentCardLinkyNew {});
+  define("content-card-linky-v2-editor", class extends ContentCardLinkyNewEditor {});
   window.customCards = window.customCards || [];
-  if (!window.customCards.some((c) => c.type === "content-card-linky-v2")) {
+  if (!window.customCards.some((c) => c.type === "content-card-linky-new")) {
     window.customCards.push({
-      type: "content-card-linky-v2",
-      name: "Carte Enedis V2",
-      description: "Carte pour MyElectricalData v2 (export Home Assistant du mode client).",
+      type: "content-card-linky-new",
+      name: "Carte Enedis Linky New",
+      description: "Carte pour MyElectricalData new (export Home Assistant du mode client).",
       preview: true,
     });
   }
-  console.info(`%c CARTE-ENEDIS-V2 %c ${CARD_VERSION} `, "background:#96d21f;color:#1a2434;font-weight:700", "background:#1d93e3;color:#fff");
+  console.info(`%c CARTE-ENEDIS-LINKY-NEW %c ${CARD_VERSION} `, "background:#96d21f;color:#1a2434;font-weight:700", "background:#1d93e3;color:#fff");
 }
 
 if (typeof module !== "undefined") module.exports = { MED };
