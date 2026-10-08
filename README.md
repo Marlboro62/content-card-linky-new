@@ -8,6 +8,17 @@ Carte Lovelace pour **[MyElectricalData v2](https://github.com/MyElectricalData/
 
 Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de la v2. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
+## 🧩 Fait partie de l'écosystème MyElectricalData v2
+
+Ces projets sont **non officiels**, maintenus par Marlboro62, sans lien avec l'équipe MyElectricalData. Ils s'appuient sur le [mode client de MyElectricalData v2](https://github.com/MyElectricalData/myelectricaldata_new).
+
+| Projet | Rôle |
+| --- | --- |
+| [Add-on Home Assistant](https://github.com/Marlboro62/hassio-addons) | Installe le mode client v2 dans Home Assistant (interface web, synchro Linky/Tempo, PostgreSQL intégré) |
+| [Script Proxmox (LXC)](https://github.com/Marlboro62/myelectricaldata-proxmox) | Déploie le mode client v2 dans un conteneur LXC Proxmox, sans Docker |
+| **Carte Lovelace (ce dépôt)** | Affiche conso, Tempo, coût et puissance max dans un tableau de bord Home Assistant |
+| [Dashboards Grafana](https://github.com/Marlboro62/myelectricaldata-v2-grafana) | Analyse la base PostgreSQL de l'add-on (Linky, Tempo, coûts) |
+
 ## Ce qu'affiche la carte
 
 - la couleur Tempo d'aujourd'hui et de demain, et les jours restants par couleur ;
@@ -21,7 +32,7 @@ Les données pas encore publiées par Enedis sont signalées comme telles, au li
 
 ## Prérequis
 
-- MyElectricalData v2 en mode client (Docker ou [add-on Home Assistant](https://github.com/Marlboro62/hassio-addons)) ;
+- MyElectricalData v2 en mode client (Docker, [add-on Home Assistant](https://github.com/Marlboro62/hassio-addons) ou [script Proxmox](https://github.com/Marlboro62/myelectricaldata-proxmox)) ;
 - l'export **Home Assistant** activé dans l'interface MyElectricalData (page Home Assistant : URL de Home Assistant et jeton d'accès longue durée).
 
 L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_today`, `sensor.rte_tempo_tomorrow`, `sensor.edf_tempo_tempo_info` et les prix `sensor.edf_tempo_price_*`.
