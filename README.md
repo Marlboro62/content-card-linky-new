@@ -48,18 +48,18 @@ L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_tod
 
 ### Manuellement
 
-1. Copiez `content-card-linky-v2.js` dans `/config/www/`.
-2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-v2.js?v=0.2.2`, type **Module JavaScript**.
+1. Copiez `content-card-linky-new.js` dans `/config/www/`.
+2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.2.3`, type **Module JavaScript**.
 3. Rechargez la page (Ctrl+F5). Changez le `?v=` à chaque mise à jour du fichier.
 
-> Le nom du fichier et le type de carte (`content-card-linky-v2`) restent inchangés, pour ne pas casser les tableaux de bord existants.
+> **Vous utilisiez la version 0.2.2 ou antérieure ?** Le fichier s'appelle désormais `content-card-linky-new.js` et le type `custom:content-card-linky-new`. L'ancien type `custom:content-card-linky-v2` reste reconnu : vos tableaux de bord continuent de fonctionner. En installation manuelle, remplacez l'ancienne ressource `/local/content-card-linky-v2.js` par la nouvelle.
 
 ## Configuration
 
 La carte se configure avec l'éditeur visuel, ou en YAML :
 
 ```yaml
-type: custom:content-card-linky-v2
+type: custom:content-card-linky-new
 entity: sensor.linky_<pdl>_consumption
 days: 14
 subscribed_power: 6
@@ -72,7 +72,7 @@ theme: v2
 | `title` | `Linky` | Titre affiché |
 | `days` | `14` | Historique du graphique : `7`, `14` ou `31` jours |
 | `subscribed_power` | aucun | Puissance souscrite en kVA, pour la jauge de puissance maximale |
-| `theme` | `v2` | `v2` : style bleu nuit de l'interface MyElectricalData ; `ha` : suit le thème clair ou sombre de Home Assistant |
+| `theme` | `v2` | `v2` : style bleu nuit de l'interface MyElectricalData (valeur conservée pour compatibilité) ; `ha` : suit le thème clair ou sombre de Home Assistant |
 | `show_cost` | `true` | Afficher les coûts estimés |
 | `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
 | `tempo_today` | `sensor.rte_tempo_today` | Couleur Tempo du jour |
