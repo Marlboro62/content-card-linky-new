@@ -11,7 +11,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.2.3";
+const CARD_VERSION = "0.2.4";
 
 /* ---------------------------------------------------------------- données */
 
@@ -138,6 +138,7 @@ const DEFAULTS = {
   show_cost: true,
   theme: "v2",
   show_pdl: true,
+  show_tempo: true,
 };
 
 class ContentCardLinkyNew extends HTMLElement {
@@ -260,7 +261,8 @@ class ContentCardLinkyNew extends HTMLElement {
 
   _header(pdl) {
     const c = this._config;
-    const left = MED.tempoLeft(this._state(c.tempo_info)?.attributes);
+    const showTempo = c.show_tempo !== false;
+    const left = showTempo ? MED.tempoLeft(this._state(c.tempo_info)?.attributes) : null;
     const quotas = left
       ? `<div class="quotas">${["blue", "white", "red"]
           .filter((k) => left[k])
@@ -272,7 +274,7 @@ class ContentCardLinkyNew extends HTMLElement {
         <svg viewBox="0 0 32 32" aria-hidden="true"><path class="house" d="M4 14.5 16 4l12 10.5V27a1.5 1.5 0 0 1-1.5 1.5h-5M10.5 28.5h-5A1.5 1.5 0 0 1 4 27V14.5"/><path class="bolt" d="M17.5 9 11 18h4.5l-1.5 8 7-10h-4.6z"/></svg>
         <div><div class="title">${esc(c.title)}</div>${pdl && c.show_pdl !== false ? `<div class="sub">PDL ${pdl}</div>` : ""}</div>
       </div>
-      <div class="tempo">${this._pill(c.tempo_today, "Aujourd'hui")}${this._pill(c.tempo_tomorrow, "Demain")}</div>
+      ${showTempo ? `<div class="tempo">${this._pill(c.tempo_today, "Aujourd'hui")}${this._pill(c.tempo_tomorrow, "Demain")}</div>` : ""}
     </header>${quotas}`;
   }
 
@@ -386,13 +388,14 @@ class ContentCardLinkyNew extends HTMLElement {
         return `${sel}${body}<rect class="hit" data-i="${d.i}" x="${k * slot}" y="0" width="${slot}" height="${H}"/>`;
       })
       .join("");
+    const showTempo = this._config.show_tempo !== false;
     const labels = chrono
       .map((d) => {
-        const t = TEMPO[d.tempo];
+        const t = showTempo ? TEMPO[d.tempo] : null;
         const name = d.date ? d.date.toLocaleDateString("fr-FR", { weekday: n > 14 ? "narrow" : "short" }).replace(".", "") : "";
         const num = d.date ? d.date.getDate() : "";
         return `<button class="day ${t ? t.cls : ""} ${d.i === this._selected ? "on" : ""}" data-i="${d.i}" title="${t ? `Jour ${t.label.toLowerCase()}` : ""}">
-          <span>${name}</span><b>${num}</b><i class="dot"></i></button>`;
+          <span>${name}</span><b>${num}</b>${showTempo ? '<i class="dot"></i>' : ""}</button>`;
       })
       .join("");
     return `<section class="chart">
@@ -406,7 +409,7 @@ class ContentCardLinkyNew extends HTMLElement {
   _detail(d) {
     if (!d || !d.date) return "";
     const when = d.date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-    const t = TEMPO[d.tempo];
+    const t = this._config.show_tempo !== false ? TEMPO[d.tempo] : null;
     const parts = [`<b>${fmt(d.total, 2)} kWh</b>`];
     if (d.hc !== null && d.hp !== null) parts.push(`HC ${fmt(d.hc, 2)}`, `HP ${fmt(d.hp, 2)}`);
     else parts.push("détail HC/HP en attente");
@@ -628,6 +631,7 @@ const SCHEMA = [
   },
   { name: "show_cost", selector: { boolean: {} } },
   { name: "show_pdl", selector: { boolean: {} } },
+  { name: "show_tempo", selector: { boolean: {} } },
   { name: "tempo_today", selector: { entity: { domain: "sensor" } } },
   { name: "tempo_tomorrow", selector: { entity: { domain: "sensor" } } },
   { name: "tempo_info", selector: { entity: { domain: "sensor" } } },
@@ -643,6 +647,7 @@ const LABELS = {
   theme: "Couleurs de la carte",
   show_cost: "Afficher les coûts estimés",
   show_pdl: "Afficher le numéro de PDL",
+  show_tempo: "Afficher Tempo (couleurs d'aujourd'hui et de demain, jours restants, pastilles du graphique)",
   tempo_today: "Tempo aujourd'hui",
   tempo_tomorrow: "Tempo demain",
   tempo_info: "Tempo, jours restants",
