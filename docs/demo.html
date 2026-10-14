@@ -98,6 +98,8 @@
         <button data-v="7">7 jours</button><button data-v="14">14 jours</button><button data-v="31">31 jours</button></div></div>
       <div class="ctl"><div class="ctl-l">Coûts estimés (<code>show_cost</code>)</div><div class="seg" data-key="cost">
         <button data-v="on">Affichés</button><button data-v="off">Masqués</button></div></div>
+      <div class="ctl"><div class="ctl-l">Tempo (<code>show_tempo</code>)</div><div class="seg" data-key="tempo">
+        <button data-v="on">Affiché</button><button data-v="off">Masqué</button></div></div>
 
       <h2 style="margin-top:20px">Situation simulée</h2>
       <div class="ctl"><div class="ctl-l">Tempo aujourd'hui</div><div class="seg" data-key="today">
@@ -150,7 +152,7 @@
   const PRICES = { blue: { hc: 0.1356, hp: 0.1654 }, white: { hc: 0.1536, hp: 0.1921 }, red: { hc: 0.1615, hp: 0.7295 } };
 
   const state = {
-    page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on",
+    page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on", tempo: "on",
     today: "blue", tomorrow: "white", split: "yes", power: "9", over: "no", eco: "1",
   };
   try {
@@ -261,6 +263,7 @@
     const c = { type: "custom:content-card-linky-new", entity: ENTITY, days: Number(state.days),
       subscribed_power: Number(state.power), theme: state.theme };
     if (state.cost === "off") c.show_cost = false;
+    if (state.tempo === "off") c.show_tempo = false;
     return c;
   }
 
