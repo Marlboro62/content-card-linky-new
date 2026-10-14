@@ -6,6 +6,8 @@ Carte Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalData
 
 ![Carte Enedis Linky New](images/apercu.png)
 
+🎮 **[Essayer la démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html)** : la vraie carte avec des données simulées, sans installer Home Assistant.
+
 Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de MyElectricalData new. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
 ## 🧩 Fait partie de l'écosystème MyElectricalData new

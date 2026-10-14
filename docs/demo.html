@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carte Enedis Linky New · démo</title>
+<meta name="description" content="Démonstration de la carte Lovelace Carte Enedis Linky New pour MyElectricalData new, avec des données simulées.">
+<style>
+  :root {
+    --bg: #0f1724; --panel: #172133; --line: #2a3850; --text: #e7edf5; --muted: #8fa0b8;
+    --accent: #96d21f; --accent2: #1d93e3; --btn: #1e2a3f; --btn-on: #2b3d5c;
+    /* Variables lues par la carte en mode « Thème Home Assistant » */
+    --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1;
+    --secondary-text-color: #9b9b9b; --divider-color: rgba(225, 225, 225, .12);
+    --ha-card-border-radius: 12px;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #eef2f7; --panel: #ffffff; --line: #d6dde8; --text: #1b2433; --muted: #5b6b82;
+    --accent: #4c8a0b; --accent2: #1673b8; --btn: #f2f5f9; --btn-on: #dde7f5;
+    --card-background-color: #ffffff; --primary-text-color: #212121;
+    --secondary-text-color: #727272; --divider-color: rgba(0, 0, 0, .12);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--accent2); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 16px 48px; }
+  .top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
+  .top svg { width: 44px; height: 44px; fill: none; flex: none; }
+  .top .house { stroke: var(--accent); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+  .top .bolt { fill: var(--accent2); }
+  h1 { font-size: 1.5rem; margin: 0; line-height: 1.2; }
+  .lead { margin: 2px 0 0; color: var(--muted); }
+  .badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: .75rem;
+    font-weight: 600; background: var(--btn-on); color: var(--text); vertical-align: middle; }
+  .links { margin-left: auto; display: flex; gap: 14px; font-size: .9rem; }
+
+  .grid { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .links { margin-left: 0; } .stage { order: -1; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .panel h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+  .ctl { margin-bottom: 14px; }
+  .ctl:last-child { margin-bottom: 0; }
+  .ctl-l { font-size: .85rem; margin-bottom: 6px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button { font: inherit; font-size: .82rem; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--btn); color: var(--text); }
+  .seg button[aria-pressed="true"] { background: var(--btn-on); border-color: var(--accent2); font-weight: 600; }
+  .seg button:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  .seg .sw { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  .sw.blue { background: #3f7ff0; } .sw.white { background: #e9eef4; box-shadow: inset 0 0 0 1px #9aa6b6; }
+  .sw.red { background: #ee4a4a; } .sw.none { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
+  .sw.green { background: #5fcf8a; } .sw.orange { background: #f0a33a; }
+
+  .stage { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .frame { margin: 0 auto; width: 100%; transition: max-width .25s ease; }
+  .frame[data-width="mobile"] { max-width: 420px; }
+  .frame[data-width="large"] { max-width: 760px; }
+  .hint { font-size: .82rem; color: var(--muted); text-align: center; margin: 0; }
+
+  pre { margin: 0; padding: 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line);
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-x: auto; white-space: pre; }
+  .yaml-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .yaml-h h2 { margin: 0; }
+  .copy { font: inherit; font-size: .8rem; padding: 4px 10px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--btn); color: var(--text); }
+  .note { font-size: .82rem; color: var(--muted); margin: 18px 0 0; }
+  @media (prefers-reduced-motion: reduce) { .frame { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path class="house" d="M4 14.5 16 4l12 10.5V27a1.5 1.5 0 0 1-1.5 1.5h-5M10.5 28.5h-5A1.5 1.5 0 0 1 4 27V14.5"/><path class="bolt" d="M17.5 9 11 18h4.5l-1.5 8 7-10h-4.6z"/></svg>
+    <div>
+      <h1>Carte Enedis Linky New <span class="badge" id="ver">démo</span></h1>
+      <p class="lead">Données simulées · aucune installation de Home Assistant nécessaire</p>
+    </div>
+    <nav class="links">
+      <a href="https://github.com/Marlboro62/content-card-linky-new">Dépôt GitHub</a>
+      <a href="https://github.com/Marlboro62/content-card-linky-new#installation">Installation</a>
+    </nav>
+  </header>
+
+  <div class="grid">
+    <aside class="panel" aria-label="Réglages de la démo">
+      <h2>Affichage</h2>
+      <div class="ctl"><div class="ctl-l">Thème de la page</div><div class="seg" data-key="page">
+        <button data-v="dark">Sombre</button><button data-v="light">Clair</button></div></div>
+      <div class="ctl"><div class="ctl-l">Couleurs de la carte (<code>theme</code>)</div><div class="seg" data-key="theme">
+        <button data-v="v2">MyElectricalData</button><button data-v="ha">Thème Home Assistant</button></div></div>
+      <div class="ctl"><div class="ctl-l">Largeur</div><div class="seg" data-key="width">
+        <button data-v="mobile">Téléphone</button><button data-v="large">Tablette / PC</button></div></div>
+      <div class="ctl"><div class="ctl-l">Historique (<code>days</code>)</div><div class="seg" data-key="days">
+        <button data-v="7">7 jours</button><button data-v="14">14 jours</button><button data-v="31">31 jours</button></div></div>
+      <div class="ctl"><div class="ctl-l">Coûts estimés (<code>show_cost</code>)</div><div class="seg" data-key="cost">
+        <button data-v="on">Affichés</button><button data-v="off">Masqués</button></div></div>
+
+      <h2 style="margin-top:20px">Situation simulée</h2>
+      <div class="ctl"><div class="ctl-l">Tempo aujourd'hui</div><div class="seg" data-key="today">
+        <button data-v="blue"><i class="sw blue"></i>Bleu</button><button data-v="white"><i class="sw white"></i>Blanc</button><button data-v="red"><i class="sw red"></i>Rouge</button></div></div>
+      <div class="ctl"><div class="ctl-l">Tempo demain</div><div class="seg" data-key="tomorrow">
+        <button data-v="blue"><i class="sw blue"></i>Bleu</button><button data-v="white"><i class="sw white"></i>Blanc</button><button data-v="red"><i class="sw red"></i>Rouge</button><button data-v="unknown"><i class="sw none"></i>Non publié</button></div></div>
+      <div class="ctl"><div class="ctl-l">Détail HC / HP d'hier</div><div class="seg" data-key="split">
+        <button data-v="yes">Publié</button><button data-v="no">Pas encore publié</button></div></div>
+      <div class="ctl"><div class="ctl-l">Puissance souscrite</div><div class="seg" data-key="power">
+        <button data-v="6">6 kVA</button><button data-v="9">9 kVA</button><button data-v="12">12 kVA</button></div></div>
+      <div class="ctl"><div class="ctl-l">Dépassement de puissance</div><div class="seg" data-key="over">
+        <button data-v="no">Non</button><button data-v="yes">Oui</button></div></div>
+      <div class="ctl"><div class="ctl-l">EcoWatt</div><div class="seg" data-key="eco">
+        <button data-v="1"><i class="sw green"></i>Normal</button><button data-v="2"><i class="sw orange"></i>Tendu</button><button data-v="3"><i class="sw red"></i>Très tendu</button><button data-v="off"><i class="sw none"></i>Indisponible</button></div></div>
+    </aside>
+
+    <main class="stage">
+      <div class="frame" id="frame"></div>
+      <p class="hint">Cliquez sur un jour du graphique pour afficher son détail.</p>
+      <section class="panel">
+        <div class="yaml-h"><h2>Configuration de la carte</h2><button class="copy" id="copy">Copier</button></div>
+        <pre id="yaml"></pre>
+      </section>
+    </main>
+  </div>
+
+  <p class="note">Les chiffres sont générés à chaque visite et ne correspondent à aucun compteur réel.
+    Dans Home Assistant, la carte lit les entités créées par l'export Home Assistant de
+    <a href="https://github.com/MyElectricalData/myelectricaldata_new">MyElectricalData new</a> (mode client).</p>
+</div>
+
+<!-- La carte, telle qu'elle est publiée dans le dépôt -->
+<script src="../content-card-linky-new.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  /* Home Assistant fournit <ha-card> ; ici, un simple bloc suffit. */
+  if (!customElements.get("ha-card")) {
+    customElements.define("ha-card", class extends HTMLElement {
+      constructor() {
+        super();
+        this.attachShadow({ mode: "open" }).innerHTML = "<style>:host{display:block}</style><slot></slot>";
+      }
+    });
+  }
+
+  const PDL = "12345678901234"; // numéro fictif
+  const ENTITY = `sensor.linky_${PDL}_consumption`;
+  const PRICES = { blue: { hc: 0.1356, hp: 0.1654 }, white: { hc: 0.1536, hp: 0.1921 }, red: { hc: 0.1615, hp: 0.7295 } };
+
+  const state = {
+    page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on",
+    today: "blue", tomorrow: "white", split: "yes", power: "9", over: "no", eco: "1",
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem("linky-demo") || "{}");
+    for (const k of Object.keys(state)) if (typeof saved[k] === "string") state[k] = saved[k];
+  } catch (e) { /* stockage indisponible : réglages par défaut */ }
+
+  /* ---------- données simulées, stables pendant la visite ---------- */
+  let seed = (Date.now() / 86400000) | 0;
+  const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const history = []; // du plus récent (hier) au plus ancien
+  for (let i = 1; i <= 70; i++) {
+    const d = new Date(today); d.setDate(today.getDate() - i);
+    const weekend = d.getDay() === 0 || d.getDay() === 6;
+    const r = rnd();
+    const tempo = weekend ? "blue" : r < 0.72 ? "blue" : r < 0.92 ? "white" : "red";
+    let total = 9.5 + rnd() * 5.5 + (weekend ? 2.2 : 0) + (tempo === "red" ? -2.5 : 0);
+    const hpShare = 0.56 + rnd() * 0.12 - (tempo === "red" ? 0.18 : 0);
+    const hp = total * hpShare;
+    const hour = 7 + Math.floor(rnd() * 14);
+    const t = new Date(d); t.setHours(hour, Math.floor(rnd() * 4) * 15);
+    history.push({ date: d, total: round(total), hc: round(total - hp), hp: round(hp),
+      mp: round(3.1 + rnd() * 2.9), mpTime: t, tempo });
+  }
+  const daysOf = (y, m) => history.filter((h) => h.date.getFullYear() === y && h.date.getMonth() === m);
+  const sum = (arr) => arr.reduce((s, h) => s + h.total, 0);
+  const avg = sum(history) / history.length;
+
+  function buildStates() {
+    const sub = Number(state.power);
+    const days = history.slice(0, 31).map((h) => ({ ...h }));
+    if (state.over === "yes") { days[4].mp = round(sub + 0.8); days[4].over = true; }
+    else days.forEach((d) => { if (d.mp > sub) d.mp = round(sub * 0.92); });
+
+    const y = today.getFullYear(), m = today.getMonth();
+    const cm = sum(daysOf(y, m));
+    const lmDate = new Date(y, m - 1, 1);
+    const lmDays = daysOf(lmDate.getFullYear(), lmDate.getMonth());
+    const lmLen = new Date(lmDate.getFullYear(), lmDate.getMonth() + 1, 0).getDate();
+    const lm = lmDays.length ? (sum(lmDays) / lmDays.length) * lmLen : avg * lmLen;
+    const doy = Math.round((today - new Date(y, 0, 1)) / 86400000);
+    const cy = avg * doy * 1.18;
+    const ly = 1.07;
+
+    const pending = state.split === "no";
+    const list = (f) => days.map(f).join(",");
+    const attrs = {
+      unit_of_measurement: "kWh",
+      friendly_name: "Linky consommation",
+      yesterday: days[0].total,
+      yesterday_evolution: round(((days[0].total - days[1].total) / days[1].total) * 100, 1),
+      current_month: round(cm, 0),
+      current_month_last_year: round(avg * new Date(y, m + 1, 0).getDate() * ly, 0),
+      last_month: round(lm, 0),
+      last_month_last_year: round(lm * ly, 0),
+      monthly_evolution: round((1 / ly - 1) * 100, 1),
+      current_year: round(cy, 0),
+      current_year_last_year: round(cy * 1.04, 0),
+      yearly_evolution: round((1 / 1.04 - 1) * 100, 1),
+      peak_offpeak_percent: round((days.reduce((t, d) => t + d.hp, 0) / sum(days)) * 100, 1),
+      dailyweek: list((d) => iso(d.date)),
+      daily: list((d) => d.total),
+      dailyweek_HC: list((d, i) => (pending && i === 0 ? -1 : d.hc)),
+      dailyweek_HP: list((d, i) => (pending && i === 0 ? -1 : d.hp)),
+      dailyweek_MP: list((d) => d.mp),
+      dailyweek_MP_time: list((d) => d.mpTime.toISOString()),
+      dailyweek_MP_over: list((d) => (d.over ? "true" : "false")),
+      dailyweek_Tempo: list((d) => d.tempo.toUpperCase()),
+    };
+
+    const used = { blue: 0, white: 0, red: 0 };
+    const season = new Date(m >= 8 ? y : y - 1, 8, 1);
+    history.forEach((h) => { if (h.date >= season) used[h.tempo]++; });
+    const stamp = new Date().toISOString() + Math.random();
+    const s = (entity_id, st, attributes = {}) => ({ entity_id, state: String(st), attributes, last_updated: stamp });
+
+    const out = {
+      [ENTITY]: s(ENTITY, days[0].total, attrs),
+      "sensor.rte_tempo_today": s("sensor.rte_tempo_today", state.today.toUpperCase()),
+      "sensor.rte_tempo_tomorrow": s("sensor.rte_tempo_tomorrow", state.tomorrow === "unknown" ? "unknown" : state.tomorrow.toUpperCase()),
+      "sensor.edf_tempo_tempo_info": s("sensor.edf_tempo_tempo_info", "ok", {
+        days_blue_detail: { quota: 300, used: used.blue },
+        days_white_detail: { quota: 43, used: used.white },
+        days_red_detail: { quota: 22, used: used.red },
+      }),
+    };
+    for (const c of ["blue", "white", "red"]) for (const h of ["hc", "hp"]) {
+      const id = `sensor.edf_tempo_price_${c}_${h}`;
+      out[id] = s(id, PRICES[c][h], { unit_of_measurement: "€/kWh" });
+    }
+    if (state.eco !== "off") {
+      const msg = { 1: "Pas d'alerte", 2: "Système électrique tendu", 3: "Système électrique très tendu, coupures possibles" }[state.eco];
+      out["sensor.rte_ecowatt_j0"] = s("sensor.rte_ecowatt_j0", state.eco, { message: msg });
+    }
+    return out;
+  }
+
+  /* ---------- carte ---------- */
+  const frame = document.getElementById("frame");
+  let card = null;
+
+  function config() {
+    const c = { type: "custom:content-card-linky-new", entity: ENTITY, days: Number(state.days),
+      subscribed_power: Number(state.power), theme: state.theme };
+    if (state.cost === "off") c.show_cost = false;
+    return c;
+  }
+
+  function yaml(c) {
+    return Object.entries(c).map(([k, v]) => `${k}: ${v}`).join("\n");
+  }
+
+  function render() {
+    document.documentElement.dataset.theme = state.page;
+    frame.dataset.width = state.width;
+    document.querySelectorAll(".seg").forEach((seg) => {
+      seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === state[seg.dataset.key])));
+    });
+    const c = config();
+    document.getElementById("yaml").textContent = yaml(c);
+    if (!card) return;
+    card.setConfig(c);
+    card.hass = { states: buildStates(), themes: { darkMode: state.page === "dark" }, language: "fr", locale: { language: "fr" } };
+  }
+
+  document.querySelectorAll(".seg").forEach((seg) => {
+    seg.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button");
+      if (!b) return;
+      state[seg.dataset.key] = b.dataset.v;
+      try { localStorage.setItem("linky-demo", JSON.stringify(state)); } catch (e) { /* ignoré */ }
+      render();
+    });
+  });
+
+  document.getElementById("copy").addEventListener("click", async (ev) => {
+    const txt = document.getElementById("yaml").textContent;
+    try { await navigator.clipboard.writeText(txt); ev.target.textContent = "Copié ✓"; }
+    catch (e) { ev.target.textContent = "Sélectionnez le texte"; }
+    setTimeout(() => { ev.target.textContent = "Copier"; }, 1600);
+  });
+
+  render();
+  customElements.whenDefined("content-card-linky-new").then(() => {
+    card = document.createElement("content-card-linky-new");
+    frame.appendChild(card);
+    render();
+  });
+})();
+</script>
+</body>
+</html>
