@@ -16,7 +16,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.3.1";
+const CARD_VERSION = "0.4.0";
 
 /* ---------------------------------------------------------------- données */
 
@@ -136,6 +136,17 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const TEMPO_INFO_IDS = (configured) =>
   [...new Set([configured, "sensor.edf_tempo_info", "sensor.edf_tempo_tempo_info"].filter(Boolean))];
 
+/** Classe de thème de la carte :
+ *  v2   : style MyElectricalData, toujours bleu nuit ;
+ *  auto : style MyElectricalData, bleu nuit si Home Assistant est en mode sombre, clair sinon ;
+ *  ha   : couleurs du thème Home Assistant (clair ou sombre). */
+const themeClass = (theme, hass) => {
+  const light = hass?.themes?.darkMode === false;
+  if (theme === "ha") return `th-ha${light ? " light" : ""}`;
+  if (theme === "auto") return `th-v2${light ? " light" : ""}`;
+  return "th-v2";
+};
+
 const DEFAULTS = {
   title: "Linky",
   days: 14,
@@ -221,7 +232,7 @@ class ContentCardLinkyNew extends HTMLElement {
     this._sig = sig;
 
     const c = this._config;
-    const mode = c.theme === "ha" ? `th-ha${this._hass.themes?.darkMode ? "" : " light"}` : "th-v2";
+    const mode = themeClass(c.theme, this._hass);
     const main = this._state(c.entity);
     if (!main) {
       this.shadowRoot.innerHTML = `${STYLE}<ha-card class="${mode}"><div class="empty">
@@ -578,7 +589,7 @@ class ContentCardLinkyNewProduction extends HTMLElement {
     this._sig = sig;
 
     const c = this._config;
-    const theme = c.theme === "ha" ? `th-ha${this._hass.themes?.darkMode ? "" : " light"}` : "th-v2";
+    const theme = themeClass(c.theme, this._hass);
     const prod = this._state(c.entity);
     const cons = c.mode === "bilan" ? this._state(c.consumption_entity) : null;
     const missing = !prod ? c.entity : c.mode === "bilan" && !cons ? c.consumption_entity : null;
@@ -957,6 +968,13 @@ ha-card.th-ha {
   border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color, #e0e0e0));
 }
 ha-card.th-ha.light { --med-green: #4c8a0b; --med-up: #c2560f; --med-down: #1d8a4b; }
+/* Style MyElectricalData en version claire (theme: auto quand Home Assistant est en mode clair) */
+ha-card.th-v2.light {
+  --med-bg: #ffffff; --med-surface: #f2f5f9; --med-line: #dbe2ec;
+  --med-text: #1a2434; --med-muted: #5b6b82;
+  --med-green: #4c8a0b; --med-blue: #1673b8; --med-up: #c2560f; --med-down: #1d8a4b;
+  box-shadow: 0 1px 3px rgba(26, 36, 52, .08);
+}
 ha-card.light .k-hc { color: #2f5fb8; }
 ha-card.light .k-hp { color: #b35619; }
 ha-card.light .t-white .dot, ha-card.light .tag.t-white { box-shadow: inset 0 0 0 1px #aab3c0; }
@@ -992,6 +1010,7 @@ const SCHEMA = [
         mode: "dropdown",
         options: [
           { value: "v2", label: "Style MyElectricalData (bleu nuit)" },
+          { value: "auto", label: "Style MyElectricalData, clair ou sombre selon Home Assistant" },
           { value: "ha", label: "Thème Home Assistant (clair ou sombre)" },
         ],
       },

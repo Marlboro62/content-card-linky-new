@@ -54,7 +54,7 @@ L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_tod
 ### Manuellement
 
 1. Copiez `content-card-linky-new.js` dans `/config/www/`.
-2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.3.1`, type **Module JavaScript**.
+2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.4.0`, type **Module JavaScript**.
 3. Rechargez la page (Ctrl+F5). Changez le `?v=` à chaque mise à jour du fichier.
 
 > **Vous utilisiez la version 0.2.2 ou antérieure ?** Le fichier s'appelle désormais `content-card-linky-new.js` et le type `custom:content-card-linky-new`. L'ancien type `custom:content-card-linky-v2` reste reconnu : vos tableaux de bord continuent de fonctionner. En installation manuelle, remplacez l'ancienne ressource `/local/content-card-linky-v2.js` par la nouvelle.
@@ -77,7 +77,7 @@ theme: v2
 | `title` | `Linky` | Titre affiché |
 | `days` | `14` | Historique du graphique : `7`, `14` ou `31` jours |
 | `subscribed_power` | aucun | Puissance souscrite en kVA, pour la jauge de puissance maximale |
-| `theme` | `v2` | `v2` : style bleu nuit de l'interface MyElectricalData (valeur conservée pour compatibilité) ; `ha` : suit le thème clair ou sombre de Home Assistant |
+| `theme` | `v2` | `v2` : style bleu nuit de l'interface MyElectricalData (valeur conservée pour compatibilité) ; `auto` : style MyElectricalData, bleu nuit quand Home Assistant est en mode sombre et clair en mode clair ; `ha` : couleurs du thème Home Assistant |
 | `show_cost` | `true` | Afficher les coûts estimés |
 | `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
 | `show_tempo` | `true` | Afficher Tempo : couleurs d'aujourd'hui et de demain, jours restants et pastilles de couleur sous le graphique. Mettre `false` pour masquer tout l'affichage Tempo (le calcul des coûts n'est pas modifié) |
@@ -118,7 +118,7 @@ consumption_entity: sensor.linky_<pdl>_consumption
 | `title` | `Production` / `Bilan réseau` | Titre affiché |
 | `days` | `14` | Historique du graphique : `7`, `14` ou `31` jours |
 | `sale_price` | aucun | Prix de rachat en €/kWh, pour estimer le revenu (mode `production`) |
-| `theme` | `v2` | `v2` ou `ha`, comme la carte de consommation |
+| `theme` | `v2` | `v2`, `auto` ou `ha`, comme la carte de consommation |
 | `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
 
 > ⚠️ **Ce que mesure Enedis** : le compteur Linky ne voit que les échanges avec le réseau. Avec un contrat de **vente du surplus**, la « production » est l'énergie **injectée** (le surplus), pas la production totale des panneaux ; avec la **vente totale**, c'est bien toute la production. L'énergie produite et consommée sur place (autoconsommation) n'est pas visible par Enedis : pour la mesurer, il faut un capteur côté onduleur. Le mode `bilan` montre donc le solde des échanges avec le réseau, pas votre autoconsommation.
