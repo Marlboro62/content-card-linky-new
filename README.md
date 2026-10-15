@@ -41,7 +41,7 @@ Les données pas encore publiées par Enedis sont signalées comme telles, au li
 - l'export **Home Assistant** activé dans l'interface MyElectricalData (page Home Assistant : URL de Home Assistant et jeton d'accès longue durée) ;
 - une **offre** sélectionnée sur la carte de votre PDL dans l'interface MyElectricalData, pour que les prix soient publiés.
 
-L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_today`, `sensor.rte_tempo_tomorrow`, `sensor.edf_tempo_tempo_info` et les prix `sensor.edf_tempo_price_*`.
+L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_today`, `sensor.rte_tempo_tomorrow`, `sensor.edf_tempo_info` et les prix `sensor.edf_tempo_price_*`.
 
 ## Installation
 
@@ -54,7 +54,7 @@ L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_tod
 ### Manuellement
 
 1. Copiez `content-card-linky-new.js` dans `/config/www/`.
-2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.3.0`, type **Module JavaScript**.
+2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.3.1`, type **Module JavaScript**.
 3. Rechargez la page (Ctrl+F5). Changez le `?v=` à chaque mise à jour du fichier.
 
 > **Vous utilisiez la version 0.2.2 ou antérieure ?** Le fichier s'appelle désormais `content-card-linky-new.js` et le type `custom:content-card-linky-new`. L'ancien type `custom:content-card-linky-v2` reste reconnu : vos tableaux de bord continuent de fonctionner. En installation manuelle, remplacez l'ancienne ressource `/local/content-card-linky-v2.js` par la nouvelle.
@@ -83,7 +83,7 @@ theme: v2
 | `show_tempo` | `true` | Afficher Tempo : couleurs d'aujourd'hui et de demain, jours restants et pastilles de couleur sous le graphique. Mettre `false` pour masquer tout l'affichage Tempo (le calcul des coûts n'est pas modifié) |
 | `tempo_today` | `sensor.rte_tempo_today` | Couleur Tempo du jour |
 | `tempo_tomorrow` | `sensor.rte_tempo_tomorrow` | Couleur Tempo du lendemain |
-| `tempo_info` | `sensor.edf_tempo_tempo_info` | Jours Tempo restants (selon votre installation, l'entité peut s'appeler `sensor.edf_tempo_info`) |
+| `tempo_info` | `sensor.edf_tempo_info` | Jours Tempo restants. Selon l'installation, l'entité peut s'appeler `sensor.edf_tempo_tempo_info` : la carte essaie les deux noms si celui-ci n'existe pas |
 | `ecowatt` | `sensor.rte_ecowatt_j0` | Signal EcoWatt (bloc masqué si indisponible) |
 | `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo |
 

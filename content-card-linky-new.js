@@ -16,7 +16,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.3.1";
 
 /* ---------------------------------------------------------------- données */
 
@@ -131,13 +131,18 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+/** Le capteur des jours Tempo restants porte l'un de ces deux noms selon l'installation :
+ *  celui de la configuration d'abord, puis les deux noms connus. */
+const TEMPO_INFO_IDS = (configured) =>
+  [...new Set([configured, "sensor.edf_tempo_info", "sensor.edf_tempo_tempo_info"].filter(Boolean))];
+
 const DEFAULTS = {
   title: "Linky",
   days: 14,
   subscribed_power: null,
   tempo_today: "sensor.rte_tempo_today",
   tempo_tomorrow: "sensor.rte_tempo_tomorrow",
-  tempo_info: "sensor.edf_tempo_tempo_info",
+  tempo_info: "sensor.edf_tempo_info",
   price_prefix: "sensor.edf_tempo_price_",
   ecowatt: "sensor.rte_ecowatt_j0",
   show_cost: true,
@@ -189,7 +194,7 @@ class ContentCardLinkyNew extends HTMLElement {
   /** Ne redessine que si une entité utilisée a changé. */
   _signature() {
     const c = this._config;
-    const ids = [c.entity, c.tempo_today, c.tempo_tomorrow, c.tempo_info, c.ecowatt];
+    const ids = [c.entity, c.tempo_today, c.tempo_tomorrow, c.ecowatt, ...TEMPO_INFO_IDS(c.tempo_info)];
     for (const col of ["blue", "white", "red"]) for (const h of ["hc", "hp"]) ids.push(`${c.price_prefix}${col}_${h}`);
     return `${c.theme}|${this._hass?.themes?.darkMode}|` + ids.map((id) => this._state(id)?.last_updated || "-").join("|");
   }
@@ -267,7 +272,8 @@ class ContentCardLinkyNew extends HTMLElement {
   _header(pdl) {
     const c = this._config;
     const showTempo = c.show_tempo !== false;
-    const left = showTempo ? MED.tempoLeft(this._state(c.tempo_info)?.attributes) : null;
+    const info = TEMPO_INFO_IDS(c.tempo_info).map((id) => this._state(id)).find(Boolean);
+    const left = showTempo ? MED.tempoLeft(info?.attributes) : null;
     const quotas = left
       ? `<div class="quotas">${["blue", "white", "red"]
           .filter((k) => left[k])
