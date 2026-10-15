@@ -78,7 +78,7 @@
     <svg viewBox="0 0 32 32" aria-hidden="true"><path class="house" d="M4 14.5 16 4l12 10.5V27a1.5 1.5 0 0 1-1.5 1.5h-5M10.5 28.5h-5A1.5 1.5 0 0 1 4 27V14.5"/><path class="bolt" d="M17.5 9 11 18h4.5l-1.5 8 7-10h-4.6z"/></svg>
     <div>
       <h1>Carte Enedis Linky New <span class="badge" id="ver">démo</span></h1>
-      <p class="lead">Consommation, production et bilan · données simulées, sans Home Assistant</p>
+      <p class="lead">Consommation, production, bilan et mini Tempo · données simulées, sans Home Assistant</p>
     </div>
     <nav class="links">
       <a href="https://github.com/Marlboro62/content-card-linky-new">Dépôt GitHub</a>
@@ -90,7 +90,7 @@
     <aside class="panel" aria-label="Réglages de la démo">
       <h2>Carte</h2>
       <div class="ctl"><div class="seg" data-key="card">
-        <button data-v="conso">Consommation</button><button data-v="prod">Production</button><button data-v="bilan">Bilan réseau</button></div></div>
+        <button data-v="conso">Consommation</button><button data-v="prod">Production</button><button data-v="bilan">Bilan réseau</button><button data-v="tempo">Mini Tempo</button></div></div>
       <h2 style="margin-top:20px">Affichage</h2>
       <div class="ctl"><div class="ctl-l">Thème de la page</div><div class="seg" data-key="page">
         <button data-v="dark">Sombre</button><button data-v="light">Clair</button></div></div>
@@ -98,7 +98,7 @@
         <button data-v="v2">MyElectricalData</button><button data-v="auto">MyElectricalData auto</button><button data-v="ha">Thème Home Assistant</button></div></div>
       <div class="ctl"><div class="ctl-l">Largeur</div><div class="seg" data-key="width">
         <button data-v="mobile">Téléphone</button><button data-v="large">Tablette / PC</button></div></div>
-      <div class="ctl"><div class="ctl-l">Historique (<code>days</code>)</div><div class="seg" data-key="days">
+      <div class="ctl" data-for="conso prod bilan"><div class="ctl-l">Historique (<code>days</code>)</div><div class="seg" data-key="days">
         <button data-v="7">7 jours</button><button data-v="14">14 jours</button><button data-v="31">31 jours</button></div></div>
       <div class="ctl" data-for="conso"><div class="ctl-l">Coûts estimés (<code>show_cost</code>)</div><div class="seg" data-key="cost">
         <button data-v="on">Affichés</button><button data-v="off">Masqués</button></div></div>
@@ -110,10 +110,10 @@
       <div class="ctl" data-for="prod bilan"><div class="ctl-l">Météo simulée</div><div class="seg" data-key="sky">
         <button data-v="sun">Plutôt ensoleillé</button><button data-v="mixed">Variable</button><button data-v="grey">Plutôt gris</button></div></div>
 
-      <h2 style="margin-top:20px" data-for="conso">Situation simulée</h2>
-      <div class="ctl" data-for="conso"><div class="ctl-l">Tempo aujourd'hui</div><div class="seg" data-key="today">
+      <h2 style="margin-top:20px" data-for="conso tempo">Situation simulée</h2>
+      <div class="ctl" data-for="conso tempo"><div class="ctl-l">Tempo aujourd'hui</div><div class="seg" data-key="today">
         <button data-v="blue"><i class="sw blue"></i>Bleu</button><button data-v="white"><i class="sw white"></i>Blanc</button><button data-v="red"><i class="sw red"></i>Rouge</button></div></div>
-      <div class="ctl" data-for="conso"><div class="ctl-l">Tempo demain</div><div class="seg" data-key="tomorrow">
+      <div class="ctl" data-for="conso tempo"><div class="ctl-l">Tempo demain</div><div class="seg" data-key="tomorrow">
         <button data-v="blue"><i class="sw blue"></i>Bleu</button><button data-v="white"><i class="sw white"></i>Blanc</button><button data-v="red"><i class="sw red"></i>Rouge</button><button data-v="unknown"><i class="sw none"></i>Non publié</button></div></div>
       <div class="ctl" data-for="conso"><div class="ctl-l">Détail HC / HP d'hier</div><div class="seg" data-key="split">
         <button data-v="yes">Publié</button><button data-v="no">Pas encore publié</button></div></div>
@@ -312,6 +312,7 @@
   let cardTag = null;
 
   function config() {
+    if (state.card === "tempo") return { type: "custom:content-card-linky-new-tempo", theme: state.theme };
     if (state.card !== "conso") {
       const c = { type: "custom:content-card-linky-new-production", entity: PROD_ENTITY };
       if (state.card === "bilan") { c.mode = "bilan"; c.consumption_entity = ENTITY; }
@@ -370,7 +371,7 @@
   });
 
   render();
-  Promise.all(["content-card-linky-new", "content-card-linky-new-production"].map((t) => customElements.whenDefined(t))).then(render);
+  Promise.all(["content-card-linky-new", "content-card-linky-new-production", "content-card-linky-new-tempo"].map((t) => customElements.whenDefined(t))).then(render);
 })();
 </script>
 </body>

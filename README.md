@@ -5,11 +5,12 @@
 Cartes Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalData/myelectricaldata_new)** (mode client), dans le style de l'interface MyElectricalData :
 
 - **Carte Enedis Linky New** : consommation Linky, heures creuses / heures pleines, Tempo, coût estimé et puissance maximale ;
-- **Carte Enedis Linky New · Production** (depuis la 0.3.0) : production, ou bilan des échanges avec le réseau (injecté / soutiré), pour les installations solaires.
+- **Carte Enedis Linky New · Production** (depuis la 0.3.0) : production, ou bilan des échanges avec le réseau (injecté / soutiré), pour les installations solaires ;
+- **Carte Enedis Linky New · Tempo** (depuis la 0.5.0) : mini-carte sur une ligne, couleur Tempo du jour et du lendemain et jours restants.
 
 ![Carte Enedis Linky New](images/apercu.png)
 
-🎮 **[Essayer la démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html)** : les vraies cartes (consommation, production, bilan) avec des données simulées, sans installer Home Assistant.
+🎮 **[Essayer la démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html)** : les vraies cartes (consommation, production, bilan, mini Tempo) avec des données simulées, sans installer Home Assistant.
 
 Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de MyElectricalData new. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
@@ -54,7 +55,7 @@ L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_tod
 ### Manuellement
 
 1. Copiez `content-card-linky-new.js` dans `/config/www/`.
-2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.4.0`, type **Module JavaScript**.
+2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.5.0`, type **Module JavaScript**.
 3. Rechargez la page (Ctrl+F5). Changez le `?v=` à chaque mise à jour du fichier.
 
 > **Vous utilisiez la version 0.2.2 ou antérieure ?** Le fichier s'appelle désormais `content-card-linky-new.js` et le type `custom:content-card-linky-new`. L'ancien type `custom:content-card-linky-v2` reste reconnu : vos tableaux de bord continuent de fonctionner. En installation manuelle, remplacez l'ancienne ressource `/local/content-card-linky-v2.js` par la nouvelle.
@@ -86,6 +87,22 @@ theme: v2
 | `tempo_info` | `sensor.edf_tempo_info` | Jours Tempo restants. Selon l'installation, l'entité peut s'appeler `sensor.edf_tempo_tempo_info` : la carte essaie les deux noms si celui-ci n'existe pas |
 | `ecowatt` | `sensor.rte_ecowatt_j0` | Signal EcoWatt (bloc masqué si indisponible) |
 | `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo |
+
+## Mini-carte Tempo
+
+Une ligne, pour le haut d'un tableau de bord ou un téléphone : couleur Tempo d'aujourd'hui et de demain, et jours restants par couleur. Elle est incluse dans le même fichier, sans ressource à ajouter.
+
+```yaml
+type: custom:content-card-linky-new-tempo
+```
+
+| Option | Défaut | Description |
+|---|---|---|
+| `tempo_today` | `sensor.rte_tempo_today` | Couleur Tempo du jour |
+| `tempo_tomorrow` | `sensor.rte_tempo_tomorrow` | Couleur Tempo du lendemain |
+| `tempo_info` | `sensor.edf_tempo_info` | Jours restants (`sensor.edf_tempo_tempo_info` essayé aussi automatiquement) |
+| `show_remaining` | `true` | Afficher les jours restants |
+| `theme` | `v2` | `v2`, `auto` ou `ha`, comme les autres cartes |
 
 ## Carte Production et bilan
 

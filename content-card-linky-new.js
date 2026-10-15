@@ -13,10 +13,12 @@
  * entity: sensor.linky_<pdl>_production
  * mode: production | bilan            (bilan : consumption_entity requis)
  *
+ * Mini-carte Tempo (même fichier) : type: custom:content-card-linky-new-tempo
+ *
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.4.0";
+const CARD_VERSION = "0.5.0";
 
 /* ---------------------------------------------------------------- données */
 
@@ -853,6 +855,80 @@ ha-card.light .k-in { color: #2f5fb8; }
 .chart line.zero { stroke: var(--med-muted); stroke-width: .4; vector-effect: non-scaling-stroke; opacity: .6; }
 </style>`;
 
+/* ------------------------------------------------------------ mini Tempo */
+
+const TEMPO_DEFAULTS = {
+  tempo_today: "sensor.rte_tempo_today",
+  tempo_tomorrow: "sensor.rte_tempo_tomorrow",
+  tempo_info: "sensor.edf_tempo_info",
+  show_remaining: true,
+  theme: "v2",
+};
+
+class ContentCardLinkyNewTempo extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("content-card-linky-new-tempo-editor");
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  setConfig(config) {
+    this._config = { ...TEMPO_DEFAULTS, ...(config || {}) };
+    this._sig = null;
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._render(true);
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render(false);
+  }
+
+  getCardSize() {
+    return 1;
+  }
+
+  _state(id) {
+    return id ? this._hass?.states?.[id] : undefined;
+  }
+
+  _render(force) {
+    if (!this._config || !this._hass || !this.shadowRoot) return;
+    const c = this._config;
+    const ids = [c.tempo_today, c.tempo_tomorrow, ...TEMPO_INFO_IDS(c.tempo_info)];
+    const sig = `${c.theme}|${this._hass.themes?.darkMode}|` + ids.map((id) => this._state(id)?.last_updated || "-").join("|");
+    if (!force && sig === this._sig) return;
+    this._sig = sig;
+
+    const pill = (entity, label) => {
+      const st = this._state(entity);
+      const t = TEMPO[st ? String(st.state).toLowerCase() : ""];
+      return `<div class="pill ${t ? t.cls : "t-none"}" title="${esc(entity)}">
+        <span class="dot"></span><span class="pill-l">${label}</span><span class="pill-v">${t ? t.label : "Non publié"}</span></div>`;
+    };
+    const info = TEMPO_INFO_IDS(c.tempo_info).map((id) => this._state(id)).find(Boolean);
+    const left = c.show_remaining !== false ? MED.tempoLeft(info?.attributes) : null;
+    const quotas = left
+      ? `<div class="quotas" title="Jours Tempo restants dans la saison">${["blue", "white", "red"]
+          .filter((k) => left[k])
+          .map((k) => `<span class="quota ${TEMPO[k].cls}"><span class="dot"></span>${left[k].left}<small>/${left[k].quota}</small></span>`)
+          .join("")}</div>`
+      : "";
+    this.shadowRoot.innerHTML = `${STYLE}${TEMPO_STYLE}<ha-card class="${themeClass(c.theme, this._hass)} mini">
+      <div class="row">${pill(c.tempo_today, "Aujourd'hui")}${pill(c.tempo_tomorrow, "Demain")}${quotas}</div>
+    </ha-card>`;
+  }
+}
+
+const TEMPO_STYLE = `<style>
+ha-card.mini { border-radius: 14px; }
+.mini .row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 10px 12px; }
+.mini .quotas { padding: 0 0 0 4px; margin-left: auto; gap: 12px; }
+@container (max-width: 360px) { .mini .quotas { margin-left: 0; } }
+</style>`;
+
 /* ------------------------------------------------------------------ style */
 
 const STYLE = `<style>
@@ -1081,6 +1157,7 @@ const PROD_LABELS = {
 
 /** Éditeur visuel commun aux deux cartes : seuls le schéma, les libellés et les valeurs par défaut changent. */
 function makeEditor(schema, labels, defaults) {
+  const hasDays = schema.some((s) => s.name === "days");
   return class extends HTMLElement {
     setConfig(config) {
       this._config = { ...config };
@@ -1100,7 +1177,7 @@ function makeEditor(schema, labels, defaults) {
         this._form.computeLabel = (s) => labels[s.name] || s.name;
         this._form.addEventListener("value-changed", (ev) => {
           const v = { ...ev.detail.value };
-          if (v.days !== undefined) v.days = Number(v.days);
+          if (hasDays && v.days !== undefined) v.days = Number(v.days);
           this._config = v;
           this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: v }, bubbles: true, composed: true }));
         });
@@ -1108,13 +1185,31 @@ function makeEditor(schema, labels, defaults) {
       }
       this._form.hass = this._hass;
       this._form.schema = schema;
-      this._form.data = { ...defaults, ...this._config, days: String(this._config.days || defaults.days) };
+      this._form.data = hasDays
+        ? { ...defaults, ...this._config, days: String(this._config.days || defaults.days) }
+        : { ...defaults, ...this._config };
     }
   };
 }
 
 const ContentCardLinkyNewEditor = makeEditor(SCHEMA, LABELS, DEFAULTS);
 const ContentCardLinkyNewProductionEditor = makeEditor(PROD_SCHEMA, PROD_LABELS, PROD_DEFAULTS);
+
+const TEMPO_SCHEMA = [
+  { name: "tempo_today", selector: { entity: { domain: "sensor" } } },
+  { name: "tempo_tomorrow", selector: { entity: { domain: "sensor" } } },
+  { name: "tempo_info", selector: { entity: { domain: "sensor" } } },
+  { name: "show_remaining", selector: { boolean: {} } },
+  THEME_SELECT,
+];
+const TEMPO_LABELS = {
+  tempo_today: "Tempo aujourd'hui",
+  tempo_tomorrow: "Tempo demain",
+  tempo_info: "Tempo, jours restants",
+  show_remaining: "Afficher les jours restants",
+  theme: "Couleurs de la carte",
+};
+const ContentCardLinkyNewTempoEditor = makeEditor(TEMPO_SCHEMA, TEMPO_LABELS, TEMPO_DEFAULTS);
 
 /* ---------------------------------------------------------- enregistrement */
 
@@ -1127,11 +1222,18 @@ if (typeof customElements !== "undefined") {
   define("content-card-linky-v2-editor", class extends ContentCardLinkyNewEditor {});
   define("content-card-linky-new-production", ContentCardLinkyNewProduction);
   define("content-card-linky-new-production-editor", ContentCardLinkyNewProductionEditor);
+  define("content-card-linky-new-tempo", ContentCardLinkyNewTempo);
+  define("content-card-linky-new-tempo-editor", ContentCardLinkyNewTempoEditor);
   window.customCards = window.customCards || [];
   const register = (type, name, description) => {
     if (!window.customCards.some((c) => c.type === type)) window.customCards.push({ type, name, description, preview: true });
   };
   register("content-card-linky-new", "Carte Enedis Linky New", "Carte pour MyElectricalData new (export Home Assistant du mode client).");
+  register(
+    "content-card-linky-new-tempo",
+    "Carte Enedis Linky New · Tempo",
+    "Mini-carte sur une ligne : couleur Tempo du jour et du lendemain, jours restants.",
+  );
   register(
     "content-card-linky-new-production",
     "Carte Enedis Linky New · Production",
