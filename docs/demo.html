@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Carte Enedis Linky New · démo</title>
-<meta name="description" content="Démonstration de la carte Lovelace Carte Enedis Linky New pour MyElectricalData new, avec des données simulées.">
+<meta name="description" content="Démonstration des cartes Lovelace Carte Enedis Linky New (consommation, production, bilan) pour MyElectricalData new, avec des données simulées.">
 <style>
   :root {
     --bg: #0f1724; --panel: #172133; --line: #2a3850; --text: #e7edf5; --muted: #8fa0b8;
@@ -67,6 +67,7 @@
   .yaml-h h2 { margin: 0; }
   .copy { font: inherit; font-size: .8rem; padding: 4px 10px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--line); background: var(--btn); color: var(--text); }
+  [hidden] { display: none !important; }
   .note { font-size: .82rem; color: var(--muted); margin: 18px 0 0; }
   @media (prefers-reduced-motion: reduce) { .frame { transition: none; } }
 </style>
@@ -77,7 +78,7 @@
     <svg viewBox="0 0 32 32" aria-hidden="true"><path class="house" d="M4 14.5 16 4l12 10.5V27a1.5 1.5 0 0 1-1.5 1.5h-5M10.5 28.5h-5A1.5 1.5 0 0 1 4 27V14.5"/><path class="bolt" d="M17.5 9 11 18h4.5l-1.5 8 7-10h-4.6z"/></svg>
     <div>
       <h1>Carte Enedis Linky New <span class="badge" id="ver">démo</span></h1>
-      <p class="lead">Données simulées · aucune installation de Home Assistant nécessaire</p>
+      <p class="lead">Consommation, production et bilan · données simulées, sans Home Assistant</p>
     </div>
     <nav class="links">
       <a href="https://github.com/Marlboro62/content-card-linky-new">Dépôt GitHub</a>
@@ -87,7 +88,10 @@
 
   <div class="grid">
     <aside class="panel" aria-label="Réglages de la démo">
-      <h2>Affichage</h2>
+      <h2>Carte</h2>
+      <div class="ctl"><div class="seg" data-key="card">
+        <button data-v="conso">Consommation</button><button data-v="prod">Production</button><button data-v="bilan">Bilan réseau</button></div></div>
+      <h2 style="margin-top:20px">Affichage</h2>
       <div class="ctl"><div class="ctl-l">Thème de la page</div><div class="seg" data-key="page">
         <button data-v="dark">Sombre</button><button data-v="light">Clair</button></div></div>
       <div class="ctl"><div class="ctl-l">Couleurs de la carte (<code>theme</code>)</div><div class="seg" data-key="theme">
@@ -96,23 +100,28 @@
         <button data-v="mobile">Téléphone</button><button data-v="large">Tablette / PC</button></div></div>
       <div class="ctl"><div class="ctl-l">Historique (<code>days</code>)</div><div class="seg" data-key="days">
         <button data-v="7">7 jours</button><button data-v="14">14 jours</button><button data-v="31">31 jours</button></div></div>
-      <div class="ctl"><div class="ctl-l">Coûts estimés (<code>show_cost</code>)</div><div class="seg" data-key="cost">
+      <div class="ctl" data-for="conso"><div class="ctl-l">Coûts estimés (<code>show_cost</code>)</div><div class="seg" data-key="cost">
         <button data-v="on">Affichés</button><button data-v="off">Masqués</button></div></div>
-      <div class="ctl"><div class="ctl-l">Tempo (<code>show_tempo</code>)</div><div class="seg" data-key="tempo">
+      <div class="ctl" data-for="conso"><div class="ctl-l">Tempo (<code>show_tempo</code>)</div><div class="seg" data-key="tempo">
         <button data-v="on">Affiché</button><button data-v="off">Masqué</button></div></div>
 
-      <h2 style="margin-top:20px">Situation simulée</h2>
-      <div class="ctl"><div class="ctl-l">Tempo aujourd'hui</div><div class="seg" data-key="today">
+      <div class="ctl" data-for="prod"><div class="ctl-l">Prix de rachat (<code>sale_price</code>, exemple)</div><div class="seg" data-key="price">
+        <button data-v="none">Non renseigné</button><button data-v="0.04">0,04 €/kWh</button><button data-v="0.13">0,13 €/kWh</button></div></div>
+      <div class="ctl" data-for="prod bilan"><div class="ctl-l">Météo simulée</div><div class="seg" data-key="sky">
+        <button data-v="sun">Plutôt ensoleillé</button><button data-v="mixed">Variable</button><button data-v="grey">Plutôt gris</button></div></div>
+
+      <h2 style="margin-top:20px" data-for="conso">Situation simulée</h2>
+      <div class="ctl" data-for="conso"><div class="ctl-l">Tempo aujourd'hui</div><div class="seg" data-key="today">
         <button data-v="blue"><i class="sw blue"></i>Bleu</button><button data-v="white"><i class="sw white"></i>Blanc</button><button data-v="red"><i class="sw red"></i>Rouge</button></div></div>
-      <div class="ctl"><div class="ctl-l">Tempo demain</div><div class="seg" data-key="tomorrow">
+      <div class="ctl" data-for="conso"><div class="ctl-l">Tempo demain</div><div class="seg" data-key="tomorrow">
         <button data-v="blue"><i class="sw blue"></i>Bleu</button><button data-v="white"><i class="sw white"></i>Blanc</button><button data-v="red"><i class="sw red"></i>Rouge</button><button data-v="unknown"><i class="sw none"></i>Non publié</button></div></div>
-      <div class="ctl"><div class="ctl-l">Détail HC / HP d'hier</div><div class="seg" data-key="split">
+      <div class="ctl" data-for="conso"><div class="ctl-l">Détail HC / HP d'hier</div><div class="seg" data-key="split">
         <button data-v="yes">Publié</button><button data-v="no">Pas encore publié</button></div></div>
-      <div class="ctl"><div class="ctl-l">Puissance souscrite</div><div class="seg" data-key="power">
+      <div class="ctl" data-for="conso"><div class="ctl-l">Puissance souscrite</div><div class="seg" data-key="power">
         <button data-v="6">6 kVA</button><button data-v="9">9 kVA</button><button data-v="12">12 kVA</button></div></div>
-      <div class="ctl"><div class="ctl-l">Dépassement de puissance</div><div class="seg" data-key="over">
+      <div class="ctl" data-for="conso"><div class="ctl-l">Dépassement de puissance</div><div class="seg" data-key="over">
         <button data-v="no">Non</button><button data-v="yes">Oui</button></div></div>
-      <div class="ctl"><div class="ctl-l">EcoWatt</div><div class="seg" data-key="eco">
+      <div class="ctl" data-for="conso"><div class="ctl-l">EcoWatt</div><div class="seg" data-key="eco">
         <button data-v="1"><i class="sw green"></i>Normal</button><button data-v="2"><i class="sw orange"></i>Tendu</button><button data-v="3"><i class="sw red"></i>Très tendu</button><button data-v="off"><i class="sw none"></i>Indisponible</button></div></div>
     </aside>
 
@@ -149,9 +158,11 @@
 
   const PDL = "12345678901234"; // numéro fictif
   const ENTITY = `sensor.linky_${PDL}_consumption`;
+  const PROD_ENTITY = `sensor.linky_${PDL}_production`;
   const PRICES = { blue: { hc: 0.1356, hp: 0.1654 }, white: { hc: 0.1536, hp: 0.1921 }, red: { hc: 0.1615, hp: 0.7295 } };
 
   const state = {
+    card: "conso", price: "none", sky: "mixed",
     page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on", tempo: "on",
     today: "blue", tomorrow: "white", split: "yes", power: "9", over: "no", eco: "1",
   };
@@ -185,6 +196,44 @@
   const daysOf = (y, m) => history.filter((h) => h.date.getFullYear() === y && h.date.getMonth() === m);
   const sum = (arr) => arr.reduce((s, h) => s + h.total, 0);
   const avg = sum(history) / history.length;
+
+  /* Production solaire fictive (~6 kWc) : saison + météo, stable pendant la visite */
+  const skySeed = history.map(() => rnd());
+  function production(sky) {
+    const clear = { sun: 0.82, mixed: 0.6, grey: 0.38 }[sky];
+    return history.map((h, i) => {
+      const doy = (h.date - new Date(h.date.getFullYear(), 0, 1)) / 86400000;
+      const season = 0.55 + 0.45 * Math.cos(((doy - 172) / 365) * 2 * Math.PI); // max fin juin
+      const weather = Math.min(1, Math.max(0.08, clear + (skySeed[i] - 0.5) * 0.7));
+      const total = round(30 * season * weather, 2);
+      const t = new Date(h.date); t.setHours(12 + Math.floor(skySeed[i] * 3), Math.floor(skySeed[i] * 4) * 15);
+      return { date: h.date, total, mp: round(Math.min(5.8, total / 4.2 + 0.4), 2), mpTime: t };
+    });
+  }
+  function prodAttrs(days, all) {
+    const y = today.getFullYear(), m = today.getMonth();
+    const inMonth = (yy, mm) => all.filter((d) => d.date.getFullYear() === yy && d.date.getMonth() === mm);
+    const tot = (arr) => arr.reduce((t, d) => t + d.total, 0);
+    const cm = tot(inMonth(y, m));
+    const lmDate = new Date(y, m - 1, 1);
+    const lm = tot(inMonth(lmDate.getFullYear(), lmDate.getMonth()));
+    const doy = Math.round((today - new Date(y, 0, 1)) / 86400000);
+    const cy = (tot(all) / all.length) * doy * 1.35;
+    const list = (f) => days.map(f).join(",");
+    return {
+      unit_of_measurement: "kWh", friendly_name: "Linky production", typeCompteur: "production",
+      yesterday: days[0].total,
+      yesterday_evolution: days[1].total ? round(((days[0].total - days[1].total) / days[1].total) * 100, 1) : -1,
+      current_month: round(cm, 0), current_month_last_year: round(cm * 1.08, 0),
+      last_month: round(lm, 0), last_month_last_year: round(lm * 0.93, 0), monthly_evolution: round((1 / 0.93 - 1) * 100, 1),
+      current_year: round(cy, 0), current_year_last_year: round(cy * 0.96, 0), yearly_evolution: round((1 / 0.96 - 1) * 100, 1),
+      peak_offpeak_percent: -1,
+      dailyweek: list((d) => iso(d.date)), daily: list((d) => d.total),
+      dailyweek_HC: list(() => -1), dailyweek_HP: list(() => -1),
+      dailyweek_MP: list((d) => d.mp), dailyweek_MP_time: list((d) => d.mpTime.toISOString()),
+      dailyweek_MP_over: list(() => "false"), dailyweek_Tempo: list(() => -1),
+    };
+  }
 
   function buildStates() {
     const sub = Number(state.power);
@@ -252,14 +301,25 @@
       const msg = { 1: "Pas d'alerte", 2: "Système électrique tendu", 3: "Système électrique très tendu, coupures possibles" }[state.eco];
       out["sensor.rte_ecowatt_j0"] = s("sensor.rte_ecowatt_j0", state.eco, { message: msg });
     }
+    const prodAll = production(state.sky);
+    out[PROD_ENTITY] = s(PROD_ENTITY, prodAll[0].total, prodAttrs(prodAll.slice(0, 31), prodAll));
     return out;
   }
 
   /* ---------- carte ---------- */
   const frame = document.getElementById("frame");
   let card = null;
+  let cardTag = null;
 
   function config() {
+    if (state.card !== "conso") {
+      const c = { type: "custom:content-card-linky-new-production", entity: PROD_ENTITY };
+      if (state.card === "bilan") { c.mode = "bilan"; c.consumption_entity = ENTITY; }
+      c.days = Number(state.days);
+      if (state.card === "prod" && state.price !== "none") c.sale_price = Number(state.price);
+      c.theme = state.theme;
+      return c;
+    }
     const c = { type: "custom:content-card-linky-new", entity: ENTITY, days: Number(state.days),
       subscribed_power: Number(state.power), theme: state.theme };
     if (state.cost === "off") c.show_cost = false;
@@ -277,9 +337,17 @@
     document.querySelectorAll(".seg").forEach((seg) => {
       seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === state[seg.dataset.key])));
     });
+    document.querySelectorAll("[data-for]").forEach((el) => { el.hidden = !el.dataset.for.split(" ").includes(state.card); });
     const c = config();
     document.getElementById("yaml").textContent = yaml(c);
-    if (!card) return;
+    const tag = c.type.replace("custom:", "");
+    if (!customElements.get(tag)) return;
+    if (cardTag !== tag) {
+      if (card) card.remove();
+      card = document.createElement(tag);
+      cardTag = tag;
+      frame.appendChild(card);
+    }
     card.setConfig(c);
     card.hass = { states: buildStates(), themes: { darkMode: state.page === "dark" }, language: "fr", locale: { language: "fr" } };
   }
@@ -302,11 +370,7 @@
   });
 
   render();
-  customElements.whenDefined("content-card-linky-new").then(() => {
-    card = document.createElement("content-card-linky-new");
-    frame.appendChild(card);
-    render();
-  });
+  Promise.all(["content-card-linky-new", "content-card-linky-new-production"].map((t) => customElements.whenDefined(t))).then(render);
 })();
 </script>
 </body>

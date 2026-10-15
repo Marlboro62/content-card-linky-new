@@ -8,10 +8,15 @@
  * type: custom:content-card-linky-new
  * entity: sensor.linky_<pdl>_consumption
  *
+ * Production et bilan des échanges avec le réseau (même fichier) :
+ * type: custom:content-card-linky-new-production
+ * entity: sensor.linky_<pdl>_production
+ * mode: production | bilan            (bilan : consumption_entity requis)
+ *
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.2.4";
+const CARD_VERSION = "0.3.0";
 
 /* ---------------------------------------------------------------- données */
 
@@ -474,6 +479,363 @@ class ContentCardLinkyNew extends HTMLElement {
   }
 }
 
+/* ------------------------------------------------- production et bilan */
+
+const PROD_DEFAULTS = {
+  title: "",
+  mode: "production",
+  days: 14,
+  consumption_entity: "",
+  sale_price: null,
+  theme: "v2",
+  show_pdl: true,
+};
+
+const SUN_ICON = `<svg viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="16" cy="16" r="5.5"/><path class="rays" d="M16 3.5v3.5M16 25v3.5M3.5 16H7M25 16h3.5M7.2 7.2l2.5 2.5M22.3 22.3l2.5 2.5M7.2 24.8l2.5-2.5M22.3 9.7l2.5-2.5"/></svg>`;
+
+const dayKey = (d) => (d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : "");
+const hhmm = (d) => (d ? d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "");
+const longDay = (d) => (d ? cap(d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) : "Hier");
+
+/** Projection fin de mois à partir du cumul du mois en cours (au moins 3 jours de données). */
+function monthProjection(cm, all) {
+  const now = new Date();
+  const last = all.find((d) => d.total !== null && d.date);
+  if (cm === null || !last || last.date.getMonth() !== now.getMonth() || last.date.getFullYear() !== now.getFullYear()) return null;
+  const done = last.date.getDate();
+  if (done < 3) return null;
+  return (cm / done) * new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+}
+
+class ContentCardLinkyNewProduction extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("content-card-linky-new-production-editor");
+  }
+
+  static getStubConfig(hass) {
+    const ids = Object.keys(hass?.states || {});
+    const prod = ids.find((id) => /^sensor\.linky_\d+_production$/.test(id));
+    const pdl = prod ? prod.match(/linky_(\d+)_/)[1] : null;
+    const cons = pdl ? ids.find((id) => id === `sensor.linky_${pdl}_consumption`) : null;
+    return { entity: prod || "sensor.linky_<pdl>_production", ...(cons ? { consumption_entity: cons } : {}) };
+  }
+
+  setConfig(config) {
+    if (!config || !config.entity) throw new Error("Indiquez l'entité de production (sensor.linky_<pdl>_production).");
+    const mode = config.mode === "bilan" ? "bilan" : "production";
+    if (mode === "bilan" && !config.consumption_entity) {
+      throw new Error("Le mode bilan a besoin de l'entité de consommation (consumption_entity : sensor.linky_<pdl>_consumption).");
+    }
+    this._config = { ...PROD_DEFAULTS, ...config, mode, days: Number(config.days || PROD_DEFAULTS.days) };
+    this._selected = 0;
+    this._sig = null;
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      this.shadowRoot.addEventListener("click", (ev) => {
+        const t = ev.target.closest("[data-i]");
+        if (!t) return;
+        this._selected = Number(t.dataset.i);
+        this._render(true);
+      });
+    }
+    this._render(true);
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render(false);
+  }
+
+  getCardSize() {
+    return 6;
+  }
+
+  _state(id) {
+    return id ? this._hass?.states?.[id] : undefined;
+  }
+
+  _signature() {
+    const c = this._config;
+    const ids = [c.entity, c.mode === "bilan" ? c.consumption_entity : null];
+    return `${c.theme}|${this._hass?.themes?.darkMode}|` + ids.map((id) => this._state(id)?.last_updated || "-").join("|");
+  }
+
+  _price() {
+    const p = MED.num(this._config.sale_price);
+    return p !== null && p > 0 ? p : null;
+  }
+
+  _render(force) {
+    if (!this._config || !this._hass || !this.shadowRoot) return;
+    const sig = this._signature();
+    if (!force && sig === this._sig) return;
+    this._sig = sig;
+
+    const c = this._config;
+    const theme = c.theme === "ha" ? `th-ha${this._hass.themes?.darkMode ? "" : " light"}` : "th-v2";
+    const prod = this._state(c.entity);
+    const cons = c.mode === "bilan" ? this._state(c.consumption_entity) : null;
+    const missing = !prod ? c.entity : c.mode === "bilan" && !cons ? c.consumption_entity : null;
+    if (missing) {
+      this.shadowRoot.innerHTML = `${STYLE}${PROD_STYLE}<ha-card class="${theme}"><div class="empty">
+        <strong>Entité introuvable : ${esc(missing)}</strong>
+        <span>Le capteur <code>sensor.linky_&lt;pdl&gt;_production</code> n'est créé par l'export Home Assistant de
+        MyElectricalData que pour un point de livraison qui a de la production (panneaux solaires, etc.).</span></div></ha-card>`;
+      return;
+    }
+
+    const pdl = (c.entity.match(/linky_(\d+)_/) || [])[1];
+    const pa = prod.attributes || {};
+    const pAll = MED.days(pa);
+    let body;
+    if (c.mode === "bilan") {
+      const ca = cons.attributes || {};
+      const byDay = new Map(MED.days(ca).map((d) => [dayKey(d.date), d]));
+      const all = pAll
+        .filter((d) => d.date)
+        .map((d) => {
+          const k = byDay.get(dayKey(d.date));
+          const out = d.total;
+          const inn = k ? k.total : null;
+          return { date: d.date, out, inn, net: out !== null && inn !== null ? out - inn : null };
+        });
+      const shown = all.slice(0, Math.max(1, Math.min(c.days, all.length)));
+      if (this._selected >= shown.length) this._selected = 0;
+      body = `${this._balanceHero(all)}${this._balanceTiles(pa, ca)}${this._balanceChart(shown)}
+        ${this._selected > 0 ? this._balanceDetail(shown[this._selected]) : ""}${this._balanceFooter(all)}`;
+    } else {
+      const shown = pAll.slice(0, Math.max(1, Math.min(c.days, pAll.length)));
+      if (this._selected >= shown.length) this._selected = 0;
+      body = `${this._prodHero(pAll[0], pa)}${this._prodTiles(pa, pAll, shown)}${this._prodChart(shown)}
+        ${this._selected > 0 ? this._prodDetail(shown[this._selected]) : ""}${this._prodFooter(pAll)}`;
+    }
+    this.shadowRoot.innerHTML = `${STYLE}${PROD_STYLE}<ha-card class="${theme} prod">${this._header(pdl)}${body}</ha-card>`;
+  }
+
+  _header(pdl) {
+    const c = this._config;
+    const title = c.title || (c.mode === "bilan" ? "Bilan réseau" : "Production");
+    return `<header>
+      <div class="brand">${SUN_ICON}
+        <div><div class="title">${esc(title)}</div>${pdl && c.show_pdl !== false ? `<div class="sub">PDL ${pdl}</div>` : ""}</div>
+      </div>
+    </header>`;
+  }
+
+  _evo(evo, suffix = " par rapport à la veille") {
+    const e = MED.num(evo);
+    // Pour la production, une hausse est une bonne nouvelle : couleurs inversées par rapport à la consommation.
+    return e !== null ? `<div class="evo ${e > 0 ? "down" : "up"}">${e > 0 ? "+" : ""}${fmt(e, 1)} %${suffix}</div>` : "";
+  }
+
+  /* ------------------------------------------------- mode production */
+
+  _prodHero(day, a) {
+    if (!day) return "";
+    const total = MED.num(a.yesterday) ?? day.total;
+    const price = this._price();
+    const peak = day.mp !== null ? `Pic d'injection ${fmt(day.mp, 2)} kW${day.mpTime ? ` à ${hhmm(day.mpTime)}` : ""}` : "";
+    return `<section class="hero">
+      <div>
+        <div class="hero-l">${esc(longDay(day.date))}</div>
+        <div class="hero-v pv">${fmt(total, 2)}<span>kWh</span></div>
+        ${this._evo(a.yesterday_evolution)}
+      </div>
+      <div class="hero-r">
+        ${
+          price !== null && total !== null
+            ? `<div class="cost">${euro(total * price)}</div><div class="cost-l">rachat estimé à ${Number(price).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/kWh</div>${peak ? `<div class="hero-p">${peak}</div>` : ""}`
+            : peak
+              ? `<div class="peak">${fmt(day.mp, 2)}<span>kW</span></div><div class="cost-l">pic d'injection${day.mpTime ? ` à ${hhmm(day.mpTime)}` : ""}</div>`
+              : ""
+        }
+      </div>
+    </section>`;
+  }
+
+  _prodTiles(a, all, shown) {
+    const now = new Date();
+    const month = (offset) => new Date(now.getFullYear(), now.getMonth() + offset, 1).toLocaleDateString("fr-FR", { month: "long" });
+    const cm = MED.num(a.current_month);
+    const cmLy = MED.num(a.current_month_last_year);
+    const lm = MED.num(a.last_month);
+    const lmLy = MED.num(a.last_month_last_year);
+    const cy = MED.num(a.current_year);
+    const cyLy = MED.num(a.current_year_last_year);
+    const proj = monthProjection(cm, all);
+    const best = shown.filter((d) => d.total !== null).reduce((m, d) => (!m || d.total > m.total ? d : m), null);
+    const tile = (label, value, unit, evo, note) => `<div class="tile">
+      <div class="tile-l">${cap(label)}</div><div class="tile-v">${value}<span>${unit}</span></div>
+      ${this._evo(evo, "")}${note ? `<div class="tile-n">${note}</div>` : ""}</div>`;
+    return `<section class="tiles">
+      ${tile(`${month(0)} en cours`, fmt(cm, 0), "kWh", null, [proj !== null ? `Projection : ${fmt(proj, 0)} kWh` : "", cmLy !== null ? `L'an dernier : ${fmt(cmLy, 0)} kWh` : ""].filter(Boolean).join("<br>"))}
+      ${tile(month(-1), fmt(lm, 0), "kWh", a.monthly_evolution, lmLy !== null ? `L'an dernier : ${fmt(lmLy, 0)} kWh` : "")}
+      ${tile(`Année ${now.getFullYear()}`, fmt(cy, 0), "kWh", a.yearly_evolution, cyLy !== null ? `À date en ${now.getFullYear() - 1} : ${fmt(cyLy, 0)} kWh` : "")}
+      ${tile("Meilleur jour", fmt(best ? best.total : null, 1), "kWh", null, best && best.date ? `Le ${best.date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}` : "")}
+    </section>`;
+  }
+
+  _labels(chrono, n) {
+    return chrono
+      .map((d) => {
+        const name = d.date ? d.date.toLocaleDateString("fr-FR", { weekday: n > 14 ? "narrow" : "short" }).replace(".", "") : "";
+        return `<button class="day ${d.i === this._selected ? "on" : ""}" data-i="${d.i}"><span>${name}</span><b>${d.date ? d.date.getDate() : ""}</b></button>`;
+      })
+      .join("");
+  }
+
+  _prodChart(days) {
+    const chrono = days.map((d, i) => ({ ...d, i })).reverse();
+    const n = chrono.length;
+    const max = Math.max(0.1, ...chrono.map((d) => d.total || 0)) * 1.08;
+    const H = 100;
+    const slot = 100 / n;
+    const w = slot * 0.62;
+    const bars = chrono
+      .map((d, k) => {
+        const x = k * slot + (slot - w) / 2;
+        const sel = d.i === this._selected ? `<rect class="sel" x="${k * slot}" y="0" width="${slot}" height="${H}"/>` : "";
+        const h = d.total !== null ? (d.total / max) * H : 0;
+        const bar = d.total !== null ? `<rect class="pv" x="${x}" y="${H - h}" width="${w}" height="${h}"/>` : "";
+        return `${sel}${bar}<rect class="hit" data-i="${d.i}" x="${k * slot}" y="0" width="${slot}" height="${H}"/>`;
+      })
+      .join("");
+    return `<section class="chart">
+      <div class="chart-h"><span>${n} derniers jours</span><span class="legend"><i class="k-pv"></i>Production</span></div>
+      <svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" role="img" aria-label="Production des ${n} derniers jours">${bars}</svg>
+      <div class="days" style="grid-template-columns:repeat(${n},1fr)">${this._labels(chrono, n)}</div>
+    </section>`;
+  }
+
+  _prodDetail(d) {
+    if (!d || !d.date) return "";
+    const price = this._price();
+    const parts = [`<b>${fmt(d.total, 2)} kWh</b>`];
+    if (price !== null && d.total !== null) parts.push(`≈ ${euro(d.total * price)}`);
+    if (d.mp !== null) parts.push(`pic ${fmt(d.mp, 2)} kW${d.mpTime ? ` à ${hhmm(d.mpTime)}` : ""}`);
+    return `<section class="detail">
+      <div class="detail-h"><span>${esc(longDay(d.date))}</span></div>
+      <div class="detail-v">${parts.join('<span class="sep"></span>')}</div>
+    </section>`;
+  }
+
+  _prodFooter(all) {
+    const last = all.find((d) => d.total !== null && d.date);
+    const bits = [];
+    if (last) bits.push(`Données Enedis jusqu'au ${last.date.toLocaleDateString("fr-FR")}`);
+    bits.push("énergie mesurée par le compteur Linky : surplus injecté sur le réseau (vente du surplus) ou production totale (vente totale)");
+    return `<footer>${bits.join(", ")}.</footer>`;
+  }
+
+  /* ------------------------------------------------------ mode bilan */
+
+  _balanceHero(all) {
+    const day = all.find((d) => d.net !== null) || all[0];
+    if (!day) return "";
+    const net = day.net;
+    const ratio = day.inn ? (day.out / day.inn) * 100 : null;
+    const total = (day.out || 0) + (day.inn || 0);
+    const outPct = total > 0 ? ((day.out || 0) / total) * 100 : 50;
+    return `<section class="hero">
+      <div>
+        <div class="hero-l">${esc(longDay(day.date))} · solde réseau</div>
+        <div class="hero-v ${net === null ? "" : net >= 0 ? "pos" : "neg"}">${net === null ? "—" : `${net > 0 ? "+" : ""}${fmt(net, 2)}`}<span>kWh</span></div>
+        <div class="tile-n">${net === null ? "" : net >= 0 ? "Plus d'énergie injectée que soutirée" : "Plus d'énergie soutirée qu'injectée"}</div>
+      </div>
+      <div class="hero-r">
+        ${ratio !== null ? `<div class="peak">${fmt(ratio, 0)}<span>%</span></div><div class="cost-l">injecté / soutiré</div>` : ""}
+      </div>
+      <div class="split"><div class="bar"><i class="out" style="width:${outPct}%"></i><i class="in" style="width:${100 - outPct}%"></i></div>
+        <div class="split-l"><span class="k-out">Injecté ${fmt(day.out, 2)} kWh</span><span class="k-in">Soutiré ${fmt(day.inn, 2)} kWh</span></div></div>
+    </section>`;
+  }
+
+  _balanceTiles(pa, ca) {
+    const now = new Date();
+    const out = MED.num(pa.current_month);
+    const inn = MED.num(ca.current_month);
+    const yOut = MED.num(pa.current_year);
+    const yIn = MED.num(ca.current_year);
+    const sign = (v) => (v === null ? "—" : `${v > 0 ? "+" : ""}${fmt(v, 0)}`);
+    const mNet = out !== null && inn !== null ? out - inn : null;
+    const yNet = yOut !== null && yIn !== null ? yOut - yIn : null;
+    const month = cap(now.toLocaleDateString("fr-FR", { month: "long" }));
+    const tile = (label, value, note, cls = "") => `<div class="tile"><div class="tile-l">${label}</div>
+      <div class="tile-v ${cls}">${value}<span>kWh</span></div>${note ? `<div class="tile-n">${note}</div>` : ""}</div>`;
+    const cls = (v) => (v === null ? "" : v >= 0 ? "pos" : "neg");
+    return `<section class="tiles">
+      ${tile(`${month} · injecté`, fmt(out, 0), "")}
+      ${tile(`${month} · soutiré`, fmt(inn, 0), "")}
+      ${tile(`${month} · solde`, sign(mNet), mNet !== null && inn ? `Injecté / soutiré : ${fmt((out / inn) * 100, 0)} %` : "", cls(mNet))}
+      ${tile(`Année ${now.getFullYear()} · solde`, sign(yNet), yNet !== null && yIn ? `Injecté / soutiré : ${fmt((yOut / yIn) * 100, 0)} %` : "", cls(yNet))}
+    </section>`;
+  }
+
+  _balanceChart(days) {
+    const chrono = days.map((d, i) => ({ ...d, i })).reverse();
+    const n = chrono.length;
+    const up = Math.max(0.1, ...chrono.map((d) => d.out || 0));
+    const down = Math.max(0.1, ...chrono.map((d) => d.inn || 0));
+    const H = 100;
+    const zero = (up / (up + down)) * H * 0.96 + 2;
+    const scale = (H - 4) / (up + down);
+    const slot = 100 / n;
+    const w = slot * 0.62;
+    const bars = chrono
+      .map((d, k) => {
+        const x = k * slot + (slot - w) / 2;
+        const sel = d.i === this._selected ? `<rect class="sel" x="${k * slot}" y="0" width="${slot}" height="${H}"/>` : "";
+        const hOut = d.out !== null ? d.out * scale : 0;
+        const hIn = d.inn !== null ? d.inn * scale : 0;
+        return `${sel}${hOut ? `<rect class="out" x="${x}" y="${zero - hOut}" width="${w}" height="${hOut}"/>` : ""}${
+          hIn ? `<rect class="in" x="${x}" y="${zero}" width="${w}" height="${hIn}"/>` : ""
+        }<rect class="hit" data-i="${d.i}" x="${k * slot}" y="0" width="${slot}" height="${H}"/>`;
+      })
+      .join("");
+    return `<section class="chart">
+      <div class="chart-h"><span>${n} derniers jours</span><span class="legend"><i class="k-out"></i>Injecté<i class="k-in"></i>Soutiré</span></div>
+      <svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" role="img" aria-label="Énergie injectée et soutirée des ${n} derniers jours">
+        ${bars}<line class="zero" x1="0" x2="100" y1="${zero}" y2="${zero}"/></svg>
+      <div class="days" style="grid-template-columns:repeat(${n},1fr)">${this._labels(chrono, n)}</div>
+    </section>`;
+  }
+
+  _balanceDetail(d) {
+    if (!d || !d.date) return "";
+    const parts = [`Injecté <b>${fmt(d.out, 2)} kWh</b>`, `Soutiré <b>${fmt(d.inn, 2)} kWh</b>`];
+    if (d.net !== null) parts.push(`Solde <b class="${d.net >= 0 ? "pos" : "neg"}">${d.net > 0 ? "+" : ""}${fmt(d.net, 2)} kWh</b>`);
+    return `<section class="detail">
+      <div class="detail-h"><span>${esc(longDay(d.date))}</span></div>
+      <div class="detail-v">${parts.join('<span class="sep"></span>')}</div>
+    </section>`;
+  }
+
+  _balanceFooter(all) {
+    const last = all.find((d) => d.net !== null);
+    const bits = [];
+    if (last) bits.push(`Données Enedis jusqu'au ${last.date.toLocaleDateString("fr-FR")}`);
+    bits.push("échanges avec le réseau mesurés par le compteur Linky ; l'énergie produite et consommée sur place (autoconsommation) n'est pas visible par Enedis");
+    return `<footer>${bits.join(", ")}.</footer>`;
+  }
+}
+
+const PROD_STYLE = `<style>
+ha-card.prod { --med-pv: #f5b82e; --med-out: #f5b82e; --med-in: #4a7bd8; --med-pos: #5fcf8a; --med-neg: #f08a4b; }
+ha-card.prod.light { --med-pv: #d99a06; --med-out: #d99a06; --med-pos: #1d8a4b; --med-neg: #c2560f; }
+.brand .sun { fill: var(--med-pv); }
+.brand .rays { stroke: var(--med-pv); stroke-width: 2.2; stroke-linecap: round; }
+.hero-v.pv { color: var(--med-text); }
+.peak { font-size: 1.6rem; font-weight: 700; color: var(--med-pv); }
+.peak span { font-size: .85rem; font-weight: 500; color: var(--med-muted); margin-left: 3px; }
+.pos { color: var(--med-pos); } .neg { color: var(--med-neg); }
+.bar .out { background: var(--med-out); } .bar .in { background: var(--med-in); }
+.k-out { color: var(--med-out); } .k-in { color: #8fb0f0; }
+ha-card.light .k-in { color: #2f5fb8; }
+.legend .k-pv, .legend .k-out { background: var(--med-out); } .legend .k-in { background: var(--med-in); }
+.chart rect.pv, .chart rect.out { fill: var(--med-out); } .chart rect.in { fill: var(--med-in); }
+.chart line.zero { stroke: var(--med-muted); stroke-width: .4; vector-effect: non-scaling-stroke; opacity: .6; }
+</style>`;
+
 /* ------------------------------------------------------------------ style */
 
 const STYLE = `<style>
@@ -655,36 +1017,79 @@ const LABELS = {
   price_prefix: "Préfixe des capteurs de prix Tempo",
 };
 
-class ContentCardLinkyNewEditor extends HTMLElement {
-  setConfig(config) {
-    this._config = { ...config };
-    this._draw();
-  }
+const DAYS_SELECT = SCHEMA.find((s) => s.name === "days");
+const THEME_SELECT = SCHEMA.find((s) => s.name === "theme");
 
-  set hass(hass) {
-    this._hass = hass;
-    if (this._form) this._form.hass = hass;
-    else this._draw();
-  }
+const PROD_SCHEMA = [
+  {
+    name: "mode",
+    required: true,
+    selector: {
+      select: {
+        mode: "dropdown",
+        options: [
+          { value: "production", label: "Production" },
+          { value: "bilan", label: "Bilan des échanges avec le réseau (injecté / soutiré)" },
+        ],
+      },
+    },
+  },
+  { name: "entity", required: true, selector: { entity: { domain: "sensor" } } },
+  { name: "consumption_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "title", selector: { text: {} } },
+  DAYS_SELECT,
+  { name: "sale_price", selector: { number: { min: 0, max: 1, step: 0.0001, mode: "box", unit_of_measurement: "€/kWh" } } },
+  THEME_SELECT,
+  { name: "show_pdl", selector: { boolean: {} } },
+];
 
-  _draw() {
-    if (!this._hass || !this._config) return;
-    if (!this._form) {
-      this._form = document.createElement("ha-form");
-      this._form.computeLabel = (s) => LABELS[s.name] || s.name;
-      this._form.addEventListener("value-changed", (ev) => {
-        const v = { ...ev.detail.value };
-        if (v.days !== undefined) v.days = Number(v.days);
-        this._config = v;
-        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: v }, bubbles: true, composed: true }));
-      });
-      this.appendChild(this._form);
+const PROD_LABELS = {
+  mode: "Affichage",
+  entity: "Production (sensor.linky_<pdl>_production)",
+  consumption_entity: "Consommation, pour le mode bilan (sensor.linky_<pdl>_consumption)",
+  title: "Titre (par défaut : Production ou Bilan réseau)",
+  days: "Historique affiché",
+  sale_price: "Prix de rachat, pour estimer le revenu (mode production, facultatif)",
+  theme: "Couleurs de la carte",
+  show_pdl: "Afficher le numéro de PDL",
+};
+
+/** Éditeur visuel commun aux deux cartes : seuls le schéma, les libellés et les valeurs par défaut changent. */
+function makeEditor(schema, labels, defaults) {
+  return class extends HTMLElement {
+    setConfig(config) {
+      this._config = { ...config };
+      this._draw();
     }
-    this._form.hass = this._hass;
-    this._form.schema = SCHEMA;
-    this._form.data = { ...DEFAULTS, ...this._config, days: String(this._config.days || DEFAULTS.days) };
-  }
+
+    set hass(hass) {
+      this._hass = hass;
+      if (this._form) this._form.hass = hass;
+      else this._draw();
+    }
+
+    _draw() {
+      if (!this._hass || !this._config) return;
+      if (!this._form) {
+        this._form = document.createElement("ha-form");
+        this._form.computeLabel = (s) => labels[s.name] || s.name;
+        this._form.addEventListener("value-changed", (ev) => {
+          const v = { ...ev.detail.value };
+          if (v.days !== undefined) v.days = Number(v.days);
+          this._config = v;
+          this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: v }, bubbles: true, composed: true }));
+        });
+        this.appendChild(this._form);
+      }
+      this._form.hass = this._hass;
+      this._form.schema = schema;
+      this._form.data = { ...defaults, ...this._config, days: String(this._config.days || defaults.days) };
+    }
+  };
 }
+
+const ContentCardLinkyNewEditor = makeEditor(SCHEMA, LABELS, DEFAULTS);
+const ContentCardLinkyNewProductionEditor = makeEditor(PROD_SCHEMA, PROD_LABELS, PROD_DEFAULTS);
 
 /* ---------------------------------------------------------- enregistrement */
 
@@ -695,15 +1100,18 @@ if (typeof customElements !== "undefined") {
   // Compatibilité : les tableaux de bord créés avec l'ancien type continuent de fonctionner.
   define("content-card-linky-v2", class extends ContentCardLinkyNew {});
   define("content-card-linky-v2-editor", class extends ContentCardLinkyNewEditor {});
+  define("content-card-linky-new-production", ContentCardLinkyNewProduction);
+  define("content-card-linky-new-production-editor", ContentCardLinkyNewProductionEditor);
   window.customCards = window.customCards || [];
-  if (!window.customCards.some((c) => c.type === "content-card-linky-new")) {
-    window.customCards.push({
-      type: "content-card-linky-new",
-      name: "Carte Enedis Linky New",
-      description: "Carte pour MyElectricalData new (export Home Assistant du mode client).",
-      preview: true,
-    });
-  }
+  const register = (type, name, description) => {
+    if (!window.customCards.some((c) => c.type === type)) window.customCards.push({ type, name, description, preview: true });
+  };
+  register("content-card-linky-new", "Carte Enedis Linky New", "Carte pour MyElectricalData new (export Home Assistant du mode client).");
+  register(
+    "content-card-linky-new-production",
+    "Carte Enedis Linky New · Production",
+    "Production et bilan des échanges avec le réseau (injecté / soutiré), pour MyElectricalData new.",
+  );
   console.info(`%c CARTE-ENEDIS-LINKY-NEW %c ${CARD_VERSION} `, "background:#96d21f;color:#1a2434;font-weight:700", "background:#1d93e3;color:#fff");
 }
 

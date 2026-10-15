@@ -2,11 +2,14 @@
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-d32f2f?logo=buymeacoffee&logoColor=white&style=flat)](https://buymeacoffee.com/marlboro62) [![Ko-fi](https://img.shields.io/badge/Ko--fi-ff5e5b?logo=kofi&logoColor=white&style=flat)](https://ko-fi.com/nothing_one)
 
-Carte Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalData/myelectricaldata_new)** (mode client) : consommation Linky, heures creuses / heures pleines, Tempo, coût estimé et puissance maximale, dans le style de l'interface MyElectricalData.
+Cartes Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalData/myelectricaldata_new)** (mode client), dans le style de l'interface MyElectricalData :
+
+- **Carte Enedis Linky New** : consommation Linky, heures creuses / heures pleines, Tempo, coût estimé et puissance maximale ;
+- **Carte Enedis Linky New · Production** (depuis la 0.3.0) : production, ou bilan des échanges avec le réseau (injecté / soutiré), pour les installations solaires.
 
 ![Carte Enedis Linky New](images/apercu.png)
 
-🎮 **[Essayer la démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html)** : la vraie carte avec des données simulées, sans installer Home Assistant.
+🎮 **[Essayer la démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html)** : les vraies cartes (consommation, production, bilan) avec des données simulées, sans installer Home Assistant.
 
 Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de MyElectricalData new. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
@@ -18,7 +21,7 @@ Ces projets sont **non officiels**, maintenus par Marlboro62, sans lien avec l'�
 | --- | --- |
 | [Add-on Home Assistant](https://github.com/Marlboro62/hassio-addons) | Installe le mode client dans Home Assistant (interface web, synchro Linky/Tempo, PostgreSQL intégré) |
 | [Script Proxmox (LXC)](https://github.com/Marlboro62/myelectricaldata-proxmox) | Déploie le mode client dans un conteneur LXC Proxmox, sans Docker |
-| **Carte Lovelace (ce dépôt)** | Affiche conso, Tempo, coût et puissance max dans un tableau de bord Home Assistant |
+| **Cartes Lovelace (ce dépôt)** | Affichent conso, Tempo, coût, puissance max, production et bilan dans un tableau de bord Home Assistant |
 | [Dashboards Grafana](https://github.com/Marlboro62/myelectricaldata-new-grafana) | Analyse la base PostgreSQL de l'add-on (Linky, Tempo, coûts) |
 
 ## Ce qu'affiche la carte
@@ -51,7 +54,7 @@ L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_tod
 ### Manuellement
 
 1. Copiez `content-card-linky-new.js` dans `/config/www/`.
-2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.2.4`, type **Module JavaScript**.
+2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.3.0`, type **Module JavaScript**.
 3. Rechargez la page (Ctrl+F5). Changez le `?v=` à chaque mise à jour du fichier.
 
 > **Vous utilisiez la version 0.2.2 ou antérieure ?** Le fichier s'appelle désormais `content-card-linky-new.js` et le type `custom:content-card-linky-new`. L'ancien type `custom:content-card-linky-v2` reste reconnu : vos tableaux de bord continuent de fonctionner. En installation manuelle, remplacez l'ancienne ressource `/local/content-card-linky-v2.js` par la nouvelle.
@@ -83,6 +86,42 @@ theme: v2
 | `tempo_info` | `sensor.edf_tempo_tempo_info` | Jours Tempo restants (selon votre installation, l'entité peut s'appeler `sensor.edf_tempo_info`) |
 | `ecowatt` | `sensor.rte_ecowatt_j0` | Signal EcoWatt (bloc masqué si indisponible) |
 | `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo |
+
+## Carte Production et bilan
+
+Le même fichier fournit une deuxième carte, `custom:content-card-linky-new-production`, pour les points de livraison qui ont de la production (panneaux solaires…). Pas de ressource à ajouter : elle est disponible dès que la carte de consommation est installée.
+
+L'export Home Assistant de MyElectricalData crée le capteur `sensor.linky_<pdl>_production` **uniquement si votre PDL a de la production**.
+
+**Mode `production`** : production de la veille et son évolution, pic d'injection, mois en cours (avec projection), mois dernier, année, meilleur jour, graphique des 7, 14 ou 31 derniers jours, et revenu estimé si vous indiquez un prix de rachat.
+
+```yaml
+type: custom:content-card-linky-new-production
+entity: sensor.linky_<pdl>_production
+sale_price: 0.04
+```
+
+**Mode `bilan`** : énergie injectée et soutirée, solde réseau du jour, du mois et de l'année, et graphique des deux sens (injecté au-dessus, soutiré en dessous).
+
+```yaml
+type: custom:content-card-linky-new-production
+mode: bilan
+entity: sensor.linky_<pdl>_production
+consumption_entity: sensor.linky_<pdl>_consumption
+```
+
+| Option | Défaut | Description |
+|---|---|---|
+| `entity` | obligatoire | Capteur de production `sensor.linky_<pdl>_production` |
+| `mode` | `production` | `production` ou `bilan` |
+| `consumption_entity` | aucun | Capteur de consommation, **obligatoire en mode `bilan`** |
+| `title` | `Production` / `Bilan réseau` | Titre affiché |
+| `days` | `14` | Historique du graphique : `7`, `14` ou `31` jours |
+| `sale_price` | aucun | Prix de rachat en €/kWh, pour estimer le revenu (mode `production`) |
+| `theme` | `v2` | `v2` ou `ha`, comme la carte de consommation |
+| `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
+
+> ⚠️ **Ce que mesure Enedis** : le compteur Linky ne voit que les échanges avec le réseau. Avec un contrat de **vente du surplus**, la « production » est l'énergie **injectée** (le surplus), pas la production totale des panneaux ; avec la **vente totale**, c'est bien toute la production. L'énergie produite et consommée sur place (autoconsommation) n'est pas visible par Enedis : pour la mesurer, il faut un capteur côté onduleur. Le mode `bilan` montre donc le solde des échanges avec le réseau, pas votre autoconsommation.
 
 ## À savoir
 
