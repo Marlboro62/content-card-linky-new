@@ -18,7 +18,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.5.0";
+const CARD_VERSION = "0.6.0";
 
 /* ---------------------------------------------------------------- données */
 
@@ -162,6 +162,7 @@ const DEFAULTS = {
   theme: "v2",
   show_pdl: true,
   show_tempo: true,
+  show_week: false,
 };
 
 class ContentCardLinkyNew extends HTMLElement {
@@ -348,6 +349,38 @@ class ContentCardLinkyNew extends HTMLElement {
     </div>`;
   }
 
+  /** Semaine en cours (lundi à hier) comparée à la même période de la semaine dernière. */
+  _weekTiles(a, all) {
+    const DAY = 86400000;
+    const dayOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const today = dayOf(new Date());
+    const monday = new Date(today.getTime() - ((today.getDay() + 6) % 7) * DAY);
+    const prevMonday = new Date(monday.getTime() - 7 * DAY);
+    const short = (d) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    const cw = MED.num(a.current_week);
+    const lw = MED.num(a.last_week);
+    // Jours de la semaine en cours déjà publiés (données à J-1)
+    const inRange = (from, to) => all.filter((d) => d.date && d.total !== null && dayOf(d.date) >= from && dayOf(d.date) <= to);
+    const done = inRange(monday, today);
+    let cwNote = "";
+    let cwEvo = null;
+    if (!done.length) {
+      cwNote = "Pas encore de données (J-1)";
+    } else {
+      const lastDone = dayOf(done.reduce((m, d) => (d.date > m ? d.date : m), done[0].date));
+      const span = Math.round((lastDone - monday) / DAY);
+      const same = inRange(prevMonday, new Date(prevMonday.getTime() + span * DAY));
+      if (same.length === span + 1) {
+        const ref = same.reduce((t, d) => t + d.total, 0);
+        if (cw !== null && ref > 0) cwEvo = ((cw - ref) / ref) * 100;
+        cwNote = `Semaine dernière à date : ${fmt(ref, 0)} kWh`;
+      }
+    }
+    const sunday = new Date(monday.getTime() - DAY);
+    return `${this._tile("Semaine en cours", done.length ? fmt(cw, 0) : "—", "kWh", cwEvo, cwNote, cwEvo !== null ? " à date" : "")}
+      ${this._tile("Semaine dernière", fmt(lw, 0), "kWh", null, `Du ${short(prevMonday)} au ${short(sunday)}`)}`;
+  }
+
   _tiles(a, all) {
     const now = new Date();
     const month = (offset, year = 0) =>
@@ -372,7 +405,9 @@ class ContentCardLinkyNew extends HTMLElement {
       proj !== null ? `Projection : ${fmt(proj, 0)} kWh` : "",
       cmLy !== null ? `${cap(month(0, -1))} : ${fmt(cmLy, 0)} kWh` : "",
     ].filter(Boolean).join("<br>");
-    return `<section class="tiles">
+    const week = this._config.show_week ? this._weekTiles(a, all) : "";
+    return `<section class="tiles${week ? " six" : ""}">
+      ${week}
       ${this._tile(`${month(0)} en cours`, fmt(cm, 0), "kWh", cmEvo, cmNote, cmEvo !== null ? " sur projection" : "")}
       ${this._tile(month(-1), fmt(lm, 0), "kWh", a.monthly_evolution, lmLy !== null ? `${cap(month(-1, -1))} : ${fmt(lmLy, 0)} kWh` : "")}
       ${this._tile(`Année ${now.getFullYear()}`, fmt(cy, 0), "kWh", a.yearly_evolution, cyLy !== null ? `À date en ${now.getFullYear() - 1} : ${fmt(cyLy, 0)} kWh` : "")}
@@ -984,6 +1019,7 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 
 .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 10px 12px 0; }
 @container (min-width: 620px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+@container (min-width: 620px) { .tiles.six { grid-template-columns: repeat(3, 1fr); } }
 .tile { padding: 12px; border-radius: 12px; border: 1px solid var(--med-line); }
 .tile-l { font-size: .78rem; color: var(--med-muted); }
 .tile-v { font-size: 1.35rem; font-weight: 700; margin-top: 2px; }
@@ -1095,6 +1131,7 @@ const SCHEMA = [
   { name: "show_cost", selector: { boolean: {} } },
   { name: "show_pdl", selector: { boolean: {} } },
   { name: "show_tempo", selector: { boolean: {} } },
+  { name: "show_week", selector: { boolean: {} } },
   { name: "tempo_today", selector: { entity: { domain: "sensor" } } },
   { name: "tempo_tomorrow", selector: { entity: { domain: "sensor" } } },
   { name: "tempo_info", selector: { entity: { domain: "sensor" } } },
@@ -1111,6 +1148,7 @@ const LABELS = {
   show_cost: "Afficher les coûts estimés",
   show_pdl: "Afficher le numéro de PDL",
   show_tempo: "Afficher Tempo (couleurs d'aujourd'hui et de demain, jours restants, pastilles du graphique)",
+  show_week: "Afficher la semaine en cours et la semaine dernière",
   tempo_today: "Tempo aujourd'hui",
   tempo_tomorrow: "Tempo demain",
   tempo_info: "Tempo, jours restants",

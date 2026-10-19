@@ -104,6 +104,8 @@
         <button data-v="on">Affichés</button><button data-v="off">Masqués</button></div></div>
       <div class="ctl" data-for="conso"><div class="ctl-l">Tempo (<code>show_tempo</code>)</div><div class="seg" data-key="tempo">
         <button data-v="on">Affiché</button><button data-v="off">Masqué</button></div></div>
+      <div class="ctl" data-for="conso"><div class="ctl-l">Semaines (<code>show_week</code>)</div><div class="seg" data-key="week">
+        <button data-v="on">Affichées</button><button data-v="off">Masquées</button></div></div>
 
       <div class="ctl" data-for="prod"><div class="ctl-l">Prix de rachat (<code>sale_price</code>, exemple)</div><div class="seg" data-key="price">
         <button data-v="none">Non renseigné</button><button data-v="0.04">0,04 €/kWh</button><button data-v="0.13">0,13 €/kWh</button></div></div>
@@ -163,7 +165,7 @@
 
   const state = {
     card: "conso", price: "none", sky: "mixed",
-    page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on", tempo: "on",
+    page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on", tempo: "on", week: "on",
     today: "blue", tomorrow: "white", split: "yes", power: "9", over: "no", eco: "1",
   };
   try {
@@ -235,6 +237,14 @@
     };
   }
 
+  /* Semaine en cours (lundi à hier) et semaine dernière, comme l'export Home Assistant */
+  function weeks(days) {
+    const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const prev = new Date(monday); prev.setDate(monday.getDate() - 7);
+    const between = (a, b) => days.filter((d) => d.date >= a && d.date < b);
+    return { current_week: round(sum(between(monday, today)), 2), last_week: round(sum(between(prev, monday)), 2) };
+  }
+
   function buildStates() {
     const sub = Number(state.power);
     const days = history.slice(0, 31).map((h) => ({ ...h }));
@@ -267,6 +277,7 @@
       current_year_last_year: round(cy * 1.04, 0),
       yearly_evolution: round((1 / 1.04 - 1) * 100, 1),
       peak_offpeak_percent: round((days.reduce((t, d) => t + d.hp, 0) / sum(days)) * 100, 1),
+      ...weeks(days),
       dailyweek: list((d) => iso(d.date)),
       daily: list((d) => d.total),
       dailyweek_HC: list((d, i) => (pending && i === 0 ? -1 : d.hc)),
@@ -325,6 +336,7 @@
       subscribed_power: Number(state.power), theme: state.theme };
     if (state.cost === "off") c.show_cost = false;
     if (state.tempo === "off") c.show_tempo = false;
+    if (state.week === "on") c.show_week = true;
     return c;
   }
 
