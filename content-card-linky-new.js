@@ -18,7 +18,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.6.0";
+const CARD_VERSION = "0.6.1";
 
 /* ---------------------------------------------------------------- données */
 
@@ -136,7 +136,29 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 /** Le capteur des jours Tempo restants porte l'un de ces deux noms selon l'installation :
  *  celui de la configuration d'abord, puis les deux noms connus. */
 const TEMPO_INFO_IDS = (configured) =>
-  [...new Set([configured, "sensor.edf_tempo_info", "sensor.edf_tempo_tempo_info"].filter(Boolean))];
+  [...new Set([configured, "sensor.edf_tempo_info", "sensor.edf_tempo_tempo_info", "sensor.myelectricaldata_tempo_info"].filter(Boolean))];
+
+/** Noms possibles des entités de l'export Home Assistant : Home Assistant les nomme d'après l'appareil
+ *  (sensor.rte_tempo_today) ou, depuis 2025.10, d'après l'identifiant suggéré (sensor.myelectricaldata_tempo_today). */
+const ENTITY_ALIASES = {
+  tempo_today: ["sensor.rte_tempo_today", "sensor.myelectricaldata_tempo_today"],
+  tempo_tomorrow: ["sensor.rte_tempo_tomorrow", "sensor.myelectricaldata_tempo_tomorrow"],
+  ecowatt: ["sensor.rte_ecowatt_j0", "sensor.myelectricaldata_ecowatt_j0"],
+};
+const PRICE_PREFIXES = ["sensor.edf_tempo_price_", "sensor.myelectricaldata_tempo_price_"];
+
+/** Remplace les entités par défaut absentes par leur autre nom, sans toucher à celles choisies par l'utilisateur. */
+const withAliases = (config, user, hass) => {
+  const states = hass?.states || {};
+  const out = { ...config };
+  for (const [key, ids] of Object.entries(ENTITY_ALIASES)) {
+    if (key in out && !user[key] && !states[out[key]]) out[key] = ids.find((id) => states[id]) || out[key];
+  }
+  if ("price_prefix" in out && !user.price_prefix && !states[`${out.price_prefix}blue_hc`]) {
+    out.price_prefix = PRICE_PREFIXES.find((p) => states[`${p}blue_hc`]) || out.price_prefix;
+  }
+  return out;
+};
 
 /** Classe de thème de la carte :
  *  v2   : style MyElectricalData, toujours bleu nuit ;
@@ -178,6 +200,8 @@ class ContentCardLinkyNew extends HTMLElement {
   setConfig(config) {
     if (!config || !config.entity) throw new Error("Indiquez l'entité de consommation (sensor.linky_<pdl>_consumption).");
     this._config = { ...DEFAULTS, ...config, days: Number(config.days || DEFAULTS.days) };
+    this._userConfig = { ...config };
+    this._baseConfig = this._config;
     this._selected = 0;
     this._sig = null;
     if (!this.shadowRoot) {
@@ -194,6 +218,7 @@ class ContentCardLinkyNew extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._baseConfig) this._config = withAliases(this._baseConfig, this._userConfig, hass);
     this._render(false);
   }
 
@@ -262,7 +287,7 @@ class ContentCardLinkyNew extends HTMLElement {
 
     this.shadowRoot.innerHTML = `${STYLE}<ha-card class="${mode}">
       ${this._header(pdl)}
-      ${this._hero(all[0], a)}
+      ${this._hero(all[0], a, prices)}
       ${this._tiles(a, all)}
       ${this._chart(shown)}
       ${this._selected > 0 ? this._detail(shown[this._selected]) : ""}
@@ -305,7 +330,7 @@ class ContentCardLinkyNew extends HTMLElement {
 
   /* ------------------------------------------------------------- hier */
 
-  _hero(day, a) {
+  _hero(day, a, prices) {
     if (!day) return "";
     const total = MED.num(a.yesterday) ?? day.total;
     const evo = MED.num(a.yesterday_evolution);
@@ -320,11 +345,13 @@ class ContentCardLinkyNew extends HTMLElement {
       </div>
       <div class="hero-r">
         ${
-          day.cost !== null
+          !this._config.show_cost
+            ? ""
+            : day.cost !== null
             ? `<div class="cost">${euro(day.cost)}</div><div class="cost-l">coût de la journée</div>`
             : day.costEst !== null
               ? `<div class="cost est">≈ ${euro(day.costEst)}</div><div class="cost-l">coût estimé, en attendant le détail HC/HP</div>`
-              : `<div class="cost none">—</div><div class="cost-l">coût disponible avec le détail HC/HP</div>`
+              : `<div class="cost none">—</div><div class="cost-l">${!prices ? "prix Tempo introuvables" : day.hc === null || day.hp === null ? "coût disponible avec le détail HC/HP" : "couleur Tempo du jour inconnue"}</div>`
         }
         ${day.mp !== null ? `<div class="hero-p">Pic ${fmt(day.mp, 2)} kVA${day.mpTime ? ` à ${day.mpTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}</div>` : ""}
       </div>
@@ -597,6 +624,7 @@ class ContentCardLinkyNewProduction extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._baseConfig) this._config = withAliases(this._baseConfig, this._userConfig, hass);
     this._render(false);
   }
 
@@ -911,6 +939,8 @@ class ContentCardLinkyNewTempo extends HTMLElement {
 
   setConfig(config) {
     this._config = { ...TEMPO_DEFAULTS, ...(config || {}) };
+    this._userConfig = { ...(config || {}) };
+    this._baseConfig = this._config;
     this._sig = null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this._render(true);
@@ -918,6 +948,7 @@ class ContentCardLinkyNewTempo extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._baseConfig) this._config = withAliases(this._baseConfig, this._userConfig, hass);
     this._render(false);
   }
 

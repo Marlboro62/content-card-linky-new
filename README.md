@@ -44,6 +44,8 @@ Les données pas encore publiées par Enedis sont signalées comme telles, au li
 
 L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_today`, `sensor.rte_tempo_tomorrow`, `sensor.edf_tempo_info` et les prix `sensor.edf_tempo_price_*`.
 
+Selon la version de Home Assistant, ces entités peuvent aussi s'appeler `sensor.myelectricaldata_tempo_today`, `sensor.myelectricaldata_tempo_info`, `sensor.myelectricaldata_tempo_price_*`, `sensor.myelectricaldata_ecowatt_j0`… La carte utilise automatiquement le nom qui existe chez vous, tant que vous n'avez pas choisi une autre entité dans sa configuration.
+
 ## Installation
 
 ### Avec HACS
@@ -87,7 +89,7 @@ theme: v2
 | `tempo_tomorrow` | `sensor.rte_tempo_tomorrow` | Couleur Tempo du lendemain |
 | `tempo_info` | `sensor.edf_tempo_info` | Jours Tempo restants. Selon l'installation, l'entité peut s'appeler `sensor.edf_tempo_tempo_info` : la carte essaie les deux noms si celui-ci n'existe pas |
 | `ecowatt` | `sensor.rte_ecowatt_j0` | Signal EcoWatt (bloc masqué si indisponible) |
-| `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo |
+| `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo (`sensor.myelectricaldata_tempo_price_` essayé automatiquement si les premiers n'existent pas) |
 
 ## Mini-carte Tempo
 
