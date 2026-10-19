@@ -44,7 +44,7 @@ Les données pas encore publiées par Enedis sont signalées comme telles, au li
 
 L'export crée notamment `sensor.linky_<pdl>_consumption`, `sensor.rte_tempo_today`, `sensor.rte_tempo_tomorrow`, `sensor.edf_tempo_info` et les prix `sensor.edf_tempo_price_*`.
 
-Selon la version de Home Assistant, ces entités peuvent aussi s'appeler `sensor.myelectricaldata_tempo_today`, `sensor.myelectricaldata_tempo_info`, `sensor.myelectricaldata_tempo_price_*`, `sensor.myelectricaldata_ecowatt_j0`… La carte utilise automatiquement le nom qui existe chez vous, tant que vous n'avez pas choisi une autre entité dans sa configuration.
+Selon la version de Home Assistant, ces entités peuvent aussi s'appeler `sensor.myelectricaldata_tempo_today`, `sensor.myelectricaldata_tempo_info`, `sensor.myelectricaldata_tempo_price_*`, `sensor.myelectricaldata_ecowatt_j0`… La carte utilise automatiquement le nom qui existe chez vous, même si l'éditeur visuel a enregistré les noms par défaut dans la configuration.
 
 ## Installation
 

@@ -18,7 +18,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.6.1";
+const CARD_VERSION = "0.6.2";
 
 /* ---------------------------------------------------------------- données */
 
@@ -147,14 +147,15 @@ const ENTITY_ALIASES = {
 };
 const PRICE_PREFIXES = ["sensor.edf_tempo_price_", "sensor.myelectricaldata_tempo_price_"];
 
-/** Remplace les entités par défaut absentes par leur autre nom, sans toucher à celles choisies par l'utilisateur. */
-const withAliases = (config, user, hass) => {
+/** Remplace une entité introuvable par son autre nom, s'il existe. L'éditeur visuel enregistre aussi les valeurs
+ *  par défaut : seule l'existence de l'entité compte, une entité choisie qui existe n'est jamais remplacée. */
+const withAliases = (config, hass) => {
   const states = hass?.states || {};
   const out = { ...config };
   for (const [key, ids] of Object.entries(ENTITY_ALIASES)) {
-    if (key in out && !user[key] && !states[out[key]]) out[key] = ids.find((id) => states[id]) || out[key];
+    if (key in out && !states[out[key]]) out[key] = ids.find((id) => states[id]) || out[key];
   }
-  if ("price_prefix" in out && !user.price_prefix && !states[`${out.price_prefix}blue_hc`]) {
+  if ("price_prefix" in out && !states[`${out.price_prefix}blue_hc`]) {
     out.price_prefix = PRICE_PREFIXES.find((p) => states[`${p}blue_hc`]) || out.price_prefix;
   }
   return out;
@@ -200,7 +201,6 @@ class ContentCardLinkyNew extends HTMLElement {
   setConfig(config) {
     if (!config || !config.entity) throw new Error("Indiquez l'entité de consommation (sensor.linky_<pdl>_consumption).");
     this._config = { ...DEFAULTS, ...config, days: Number(config.days || DEFAULTS.days) };
-    this._userConfig = { ...config };
     this._baseConfig = this._config;
     this._selected = 0;
     this._sig = null;
@@ -218,7 +218,7 @@ class ContentCardLinkyNew extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this._baseConfig) this._config = withAliases(this._baseConfig, this._userConfig, hass);
+    if (this._baseConfig) this._config = withAliases(this._baseConfig, hass);
     this._render(false);
   }
 
@@ -624,7 +624,7 @@ class ContentCardLinkyNewProduction extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this._baseConfig) this._config = withAliases(this._baseConfig, this._userConfig, hass);
+    if (this._baseConfig) this._config = withAliases(this._baseConfig, hass);
     this._render(false);
   }
 
@@ -939,7 +939,6 @@ class ContentCardLinkyNewTempo extends HTMLElement {
 
   setConfig(config) {
     this._config = { ...TEMPO_DEFAULTS, ...(config || {}) };
-    this._userConfig = { ...(config || {}) };
     this._baseConfig = this._config;
     this._sig = null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -948,7 +947,7 @@ class ContentCardLinkyNewTempo extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this._baseConfig) this._config = withAliases(this._baseConfig, this._userConfig, hass);
+    if (this._baseConfig) this._config = withAliases(this._baseConfig, hass);
     this._render(false);
   }
 
