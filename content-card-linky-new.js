@@ -18,7 +18,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.6.2";
+const CARD_VERSION = "0.7.0";
 
 /* ---------------------------------------------------------------- données */
 
@@ -994,6 +994,294 @@ ha-card.mini { border-radius: 14px; }
 @container (max-width: 360px) { .mini .quotas { margin-left: 0; } }
 </style>`;
 
+
+/* ------------------------------------------------- carte coûts par appareil */
+
+const DEV_DEFAULTS = {
+  title: "Coûts par appareil",
+  period: "mois",
+  tarif: "sensor.lixee_current_price",
+  price: "sensor.tempo_tarif_ttc_actuel",
+  power: "sensor.lixee_sinsts",
+  cost_day: "sensor.tempo_cout_total_aujourd_hui",
+  cost_month: "sensor.tempo_cout_total_ce_mois",
+  cost_cycle: "sensor.tempo_cout_total_cycle_en_cours",
+  energy_day: "sensor.tempo_cout_energie_aujourd_hui",
+  energy_month: "sensor.tempo_cout_energie_ce_mois",
+  energy_cycle: "sensor.tempo_cout_energie_cycle_en_cours",
+  kwh_prefix: "sensor.tempo_",
+  show_zero: false,
+  show_split: true,
+  theme: "v2",
+};
+
+const DEV_PERIODS = [
+  { key: "jour", alt: "day", label: "Jour", total: "cost_day", energy: "energy_day" },
+  { key: "mois", alt: "month", label: "Mois", total: "cost_month", energy: "energy_month" },
+  { key: "cycle", alt: "cycle", label: "Cycle", total: "cost_cycle", energy: "energy_cycle" },
+];
+
+/** Postes Tempo : index des capteurs <prefixe><couleur>_<hc|hp>_energie_ce_mois. */
+const DEV_POSTES = [
+  { k: "bleu_hc", c: "blue", h: "HC" }, { k: "bleu_hp", c: "blue", h: "HP" },
+  { k: "blanc_hc", c: "white", h: "HC" }, { k: "blanc_hp", c: "white", h: "HP" },
+  { k: "rouge_hc", c: "red", h: "HC" }, { k: "rouge_hp", c: "red", h: "HP" },
+];
+
+/** Montant en euros, avec 3 décimales sous 10 centimes (les petits appareils). */
+const euroSmall = (n) => {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  if (n === 0) return "0 €";
+  if (Math.abs(n) < 0.001) return "< 0,001 €";
+  const d = Math.abs(n) < 0.1 ? 3 : 2;
+  return n.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }) + " €";
+};
+
+/** Sans liste configurée : regroupe les capteurs sensor.cout_<nom>_<jour|mois|cycle> ;
+ *  ceux en sensor.cout_disjoncteur_* vont dans les circuits. */
+const autoDevices = (states) => {
+  const groups = {};
+  for (const id of Object.keys(states)) {
+    const m = /^sensor\.cout_(.+)_(jour|mois|cycle)$/.exec(id);
+    if (!m) continue;
+    const g = (groups[m[1]] = groups[m[1]] || { slug: m[1] });
+    g[m[2]] = id;
+    if (!g.name) {
+      const fn = String(states[id].attributes?.friendly_name || m[1]);
+      g.name = fn.replace(/^Coût\s+/i, "").replace(/^Disjoncteur\s+/i, "").replace(/\s+(jour|mois|cycle)$/i, "");
+    }
+  }
+  const circuits = [];
+  const devices = [];
+  for (const g of Object.values(groups)) {
+    const power = `sensor.${g.slug}_power`;
+    if (states[power]) g.power = power;
+    (g.slug.startsWith("disjoncteur_") ? circuits : devices).push(g);
+  }
+  return { circuits, devices };
+};
+
+class ContentCardLinkyNewDevices extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("content-card-linky-new-appareils-editor");
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  setConfig(config) {
+    this._config = { ...DEV_DEFAULTS, ...(config || {}) };
+    if (!this._tab) this._tab = DEV_PERIODS.some((p) => p.key === this._config.period) ? this._config.period : "mois";
+    this._sig = null;
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      this.shadowRoot.addEventListener("click", (ev) => {
+        const tab = ev.target.closest?.("[data-tab]");
+        if (tab) {
+          this._tab = tab.dataset.tab;
+          this._render(true);
+          return;
+        }
+        const more = ev.target.closest?.("[data-entity]");
+        if (more) {
+          const e = new Event("hass-more-info", { bubbles: true, composed: true });
+          e.detail = { entityId: more.dataset.entity };
+          this.dispatchEvent(e);
+        }
+      });
+    }
+    this._render(true);
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render(false);
+  }
+
+  getCardSize() {
+    return 8;
+  }
+
+  _state(id) {
+    return id ? this._hass?.states?.[id] : undefined;
+  }
+
+  _num(id) {
+    const st = this._state(id);
+    if (!st) return null;
+    const n = Number(st.state);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  _lists() {
+    const c = this._config;
+    if (Array.isArray(c.circuits) || Array.isArray(c.devices)) {
+      return { circuits: c.circuits || [], devices: c.devices || [] };
+    }
+    return autoDevices(this._hass.states || {});
+  }
+
+  _render(force) {
+    if (!this._config || !this._hass || !this.shadowRoot) return;
+    const c = this._config;
+    const lists = this._lists();
+    const period = DEV_PERIODS.find((p) => p.key === this._tab) || DEV_PERIODS[1];
+    const pick = (d, p) => d[p.key] || d[p.alt];
+    const all = [...lists.circuits, ...lists.devices];
+    const ids = [
+      c.tarif, c.price, c.power,
+      ...DEV_PERIODS.flatMap((p) => [c[p.total], c[p.energy]]),
+      ...(c.show_split !== false ? DEV_POSTES.map((p) => `${c.kwh_prefix}${p.k}_energie_ce_mois`) : []),
+      ...all.flatMap((d) => [pick(d, period), d.power]),
+    ];
+    const sig = `${c.theme}|${this._hass.themes?.darkMode}|${this._tab}|` + ids.map((id) => this._state(id)?.last_updated || "-").join("|");
+    if (!force && sig === this._sig) return;
+    this._sig = sig;
+
+    // En-tête : poste Tempo en cours (« HP BLEU »), prix du kWh, puissance instantanée
+    const tarif = String(this._state(c.tarif)?.state || "").toUpperCase();
+    const color = /ROUGE|RED/.test(tarif) ? "red" : /BLANC|WHITE/.test(tarif) ? "white" : /BLEU|BLUE/.test(tarif) ? "blue" : null;
+    const hchp = /HC/.test(tarif) ? "HC" : /HP/.test(tarif) ? "HP" : "";
+    const price = this._num(c.price);
+    const pw = this._state(c.power);
+    const pills = [
+      color || hchp
+        ? `<div class="pill ${color ? TEMPO[color].cls : "t-none"}" data-entity="${esc(c.tarif)}"><span class="dot"></span><span class="pill-l">En cours</span><span class="pill-v">${hchp} ${color ? TEMPO[color].label : ""}</span></div>`
+        : "",
+      price !== null
+        ? `<div class="pill" data-entity="${esc(c.price)}"><span class="pill-l">kWh</span><span class="pill-v">${price.toLocaleString("fr-FR", { minimumFractionDigits: 4, maximumFractionDigits: 4 })} €</span></div>`
+        : "",
+      pw && Number.isFinite(Number(pw.state))
+        ? `<div class="pill" data-entity="${esc(c.power)}"><span class="pill-l">Puissance</span><span class="pill-v">${fmt(Number(pw.state), 0)} ${esc(pw.attributes?.unit_of_measurement || "W")}</span></div>`
+        : "",
+    ].join("");
+
+    // Tuiles : coût total (abonnement compris) et part énergie, par période
+    const tiles = DEV_PERIODS.map((p) => {
+      const total = this._num(c[p.total]);
+      const energy = this._num(c[p.energy]);
+      if (total === null && energy === null) return "";
+      const lbl = { jour: "Aujourd'hui", mois: "Ce mois", cycle: "Cycle en cours" }[p.key];
+      return `<div class="tile${p.key === period.key ? " sel" : ""}" data-tab="${p.key}">
+        <div class="tile-l">${lbl}</div>
+        <div class="tile-v">${euro(total ?? energy)}</div>
+        ${total !== null && energy !== null ? `<div class="tile-n">dont énergie ${euro(energy)}</div>` : ""}
+      </div>`;
+    }).join("");
+
+    // Répartition du mois par poste Tempo (kWh)
+    let split = "";
+    if (c.show_split !== false) {
+      const parts = DEV_POSTES.map((p) => ({ ...p, v: this._num(`${c.kwh_prefix}${p.k}_energie_ce_mois`) || 0 }));
+      const sum = parts.reduce((a, p) => a + p.v, 0);
+      if (sum > 0) {
+        const shown = parts.filter((p) => p.v / sum >= 0.001);
+        split = `<div class="split dv">
+          <div class="chart-h"><span>Énergie du mois par poste Tempo</span><span>${fmt(sum, 1)} kWh</span></div>
+          <div class="bar">${shown.map((p) => `<i class="s-${p.c} s-${p.h}" style="width:${(p.v / sum) * 100}%" title="${TEMPO[p.c].label} ${p.h} : ${fmt(p.v, 1)} kWh"></i>`).join("")}</div>
+          <div class="dv-leg">${shown.map((p) => `<span><i class="s-${p.c} s-${p.h}"></i>${TEMPO[p.c].label} ${p.h} <b>${fmt(p.v, p.v < 10 ? 1 : 0)}</b></span>`).join("")}</div>
+        </div>`;
+      }
+    }
+
+    // Classements
+    const showZero = c.show_zero === true;
+    const energy = this._num(c[period.energy]);
+    const section = (title, list, rest) => {
+      const rows = list
+        .map((d) => ({ d, id: pick(d, period), v: this._num(pick(d, period)) }))
+        .filter((r) => r.id && this._state(r.id));
+      if (!rows.length) return "";
+      rows.sort((a, b) => (b.v ?? -1) - (a.v ?? -1));
+      const visible = showZero ? rows : rows.filter((r) => r.v);
+      const hidden = rows.length - visible.length;
+      const max = Math.max(...visible.map((r) => r.v || 0), 1e-9);
+      const sum = visible.reduce((a, r) => a + (r.v || 0), 0);
+      const line = (name, icon, v, id, powerId, cls = "") => {
+        const pst = this._state(powerId);
+        const pv = pst && Number.isFinite(Number(pst.state)) ? Number(pst.state) : null;
+        return `<div class="dv-row ${cls}"${id ? ` data-entity="${esc(id)}"` : ""}>
+          <ha-icon icon="${esc(icon || "mdi:flash")}"></ha-icon>
+          <div class="dv-main">
+            <div class="dv-top"><span class="dv-n">${esc(name)}</span>${pv !== null ? `<span class="dv-p${pv > 0 ? " on" : ""}">${fmt(pv, pv < 10 && pv % 1 ? 1 : 0)} W</span>` : ""}<span class="dv-v">${euroSmall(v)}</span></div>
+            <div class="dv-bar"><i style="width:${Math.max(0, ((v || 0) / max) * 100)}%"></i></div>
+          </div>
+        </div>`;
+      };
+      return `<div class="dv-sec">
+        <div class="chart-h"><span>${title}</span><span>${euroSmall(sum)}</span></div>
+        ${visible.map((r) => line(r.d.name || r.id, r.d.icon, r.v, r.id, r.d.power)).join("")}
+        ${rest > 0.005 ? `<div class="dv-rest" title="Coût énergie de la période moins la somme des circuits">Non mesuré par les circuits : <b>${euroSmall(rest)}</b>${energy > 0 ? ` (${fmt((rest / energy) * 100, 0)} %)` : ""}</div>` : ""}
+        ${hidden ? `<div class="dv-zero">+ ${hidden} à 0 € sur la période</div>` : ""}
+      </div>`;
+    };
+    const circuitSum = lists.circuits.reduce((a, d) => a + (this._num(pick(d, period)) || 0), 0);
+    const rest = energy !== null && lists.circuits.length ? energy - circuitSum : 0;
+    const secs = section("Circuits", lists.circuits, rest) + section("Appareils", lists.devices, 0);
+
+    const tabs = `<div class="dv-tabs">${DEV_PERIODS.map((p) => `<button data-tab="${p.key}" class="${p.key === period.key ? "on" : ""}">${p.label}</button>`).join("")}</div>`;
+    const note = lists.circuits.length && lists.devices.length
+      ? `<footer>Les appareils sont déjà comptés dans leur circuit : ne pas additionner les deux listes.</footer>`
+      : `<div style="height:12px"></div>`;
+
+    this.shadowRoot.innerHTML = `${STYLE}${DEV_STYLE}<ha-card class="${themeClass(c.theme, this._hass)}">
+      <header>
+        <div class="brand">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path class="house" d="M4 14.5 16 4l12 10.5V27a1.5 1.5 0 0 1-1.5 1.5h-5M10.5 28.5h-5A1.5 1.5 0 0 1 4 27V14.5"/><path class="bolt" d="M17.5 9 11 18h4.5l-1.5 8 7-10h-4.6z"/></svg>
+          <div><div class="title">${esc(c.title)}</div><div class="sub">Coûts au tarif en cours</div></div>
+        </div>
+        <div class="tempo">${pills}</div>
+      </header>
+      ${tiles ? `<div class="tiles dv-tiles">${tiles}</div>` : ""}
+      ${split}
+      ${secs ? tabs + secs : `<div class="empty">Aucun capteur de coût trouvé<span>Ajoutez des capteurs sensor.cout_&lt;appareil&gt;_jour / _mois / _cycle, ou listez-les dans circuits: et devices: (voir le README).</span></div>`}
+      ${note}
+    </ha-card>`;
+  }
+}
+
+const DEV_STYLE = `<style>
+.dv-tiles { grid-template-columns: repeat(3, 1fr) !important; }
+.dv-tiles .tile { cursor: pointer; }
+.dv-tiles .tile.sel { border-color: var(--med-blue); background: var(--med-surface); }
+.dv-tiles .tile-v { font-size: 1.2rem; }
+.split.dv { margin: 12px 12px 0; }
+.split.dv .chart-h { margin: 0 2px 6px; }
+.bar .s-blue.s-HC { background: #8fb0f0; } .bar .s-blue.s-HP { background: var(--t-blue); }
+.bar .s-white.s-HC { background: #f2f5f9; } .bar .s-white.s-HP { background: #aab3c0; }
+.bar .s-red.s-HC { background: #f39a9a; } .bar .s-red.s-HP { background: var(--t-red); }
+.dv-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .74rem; color: var(--med-muted); margin-top: 6px; }
+.dv-leg span { display: inline-flex; align-items: center; gap: 5px; }
+.dv-leg b { color: var(--med-text); font-weight: 600; }
+.dv-leg i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+.dv-leg .s-blue.s-HC { background: #8fb0f0; } .dv-leg .s-blue.s-HP { background: var(--t-blue); }
+.dv-leg .s-white.s-HC { background: #f2f5f9; } .dv-leg .s-white.s-HP { background: #aab3c0; }
+.dv-leg .s-red.s-HC { background: #f39a9a; } .dv-leg .s-red.s-HP { background: var(--t-red); }
+.dv-tabs { display: flex; gap: 4px; margin: 14px 12px 0; padding: 3px; border-radius: 10px; background: var(--med-surface); border: 1px solid var(--med-line); }
+.dv-tabs button { flex: 1; border: 0; background: none; color: var(--med-muted); font: inherit; font-size: .8rem; padding: 6px 0; border-radius: 8px; cursor: pointer; }
+.dv-tabs button.on { background: var(--med-blue); color: #fff; font-weight: 600; }
+.dv-sec { margin: 12px 12px 0; }
+.dv-sec .chart-h { margin: 0 2px 4px; }
+.dv-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-radius: 10px; cursor: pointer; }
+.dv-row:hover { background: var(--med-surface); }
+.dv-row ha-icon { --mdc-icon-size: 20px; color: var(--med-muted); flex: none; }
+.dv-main { flex: 1; min-width: 0; }
+.dv-top { display: flex; align-items: baseline; gap: 8px; font-size: .86rem; }
+.dv-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-p { font-size: .72rem; color: var(--med-muted); }
+.dv-p.on { color: var(--med-green); }
+.dv-v { font-weight: 700; min-width: 64px; text-align: right; }
+.dv-bar { height: 5px; border-radius: 4px; background: var(--med-line); margin-top: 4px; overflow: hidden; }
+.dv-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--med-blue), var(--med-green)); }
+.dv-rest { font-size: .76rem; color: var(--med-muted); padding: 4px 4px 0 34px; }
+.dv-rest b { color: var(--med-text); }
+.dv-zero { font-size: .74rem; color: var(--med-muted); padding: 2px 4px 0 34px; }
+ha-card.light .dv-tabs button.on { background: var(--med-blue); }
+ha-card.light .bar .s-white.s-HC, ha-card.light .dv-leg .s-white.s-HC { background: #dbe2ec; }
+@container (max-width: 380px) { .dv-tiles { grid-template-columns: 1fr !important; } }
+</style>`;
+
 /* ------------------------------------------------------------------ style */
 
 const STYLE = `<style>
@@ -1279,6 +1567,46 @@ const TEMPO_LABELS = {
 };
 const ContentCardLinkyNewTempoEditor = makeEditor(TEMPO_SCHEMA, TEMPO_LABELS, TEMPO_DEFAULTS);
 
+
+const DEV_SCHEMA = [
+  { name: "title", selector: { text: {} } },
+  {
+    name: "period",
+    selector: { select: { mode: "dropdown", options: [{ value: "jour", label: "Jour" }, { value: "mois", label: "Mois" }, { value: "cycle", label: "Cycle" }] } },
+  },
+  { name: "tarif", selector: { entity: { domain: "sensor" } } },
+  { name: "price", selector: { entity: { domain: "sensor" } } },
+  { name: "power", selector: { entity: { domain: "sensor" } } },
+  { name: "cost_day", selector: { entity: { domain: "sensor" } } },
+  { name: "cost_month", selector: { entity: { domain: "sensor" } } },
+  { name: "cost_cycle", selector: { entity: { domain: "sensor" } } },
+  { name: "energy_day", selector: { entity: { domain: "sensor" } } },
+  { name: "energy_month", selector: { entity: { domain: "sensor" } } },
+  { name: "energy_cycle", selector: { entity: { domain: "sensor" } } },
+  { name: "show_split", selector: { boolean: {} } },
+  { name: "kwh_prefix", selector: { text: {} } },
+  { name: "show_zero", selector: { boolean: {} } },
+  THEME_SELECT,
+];
+const DEV_LABELS = {
+  title: "Titre",
+  period: "Période affichée à l'ouverture",
+  tarif: "Poste Tempo en cours (ex. « HP BLEU »)",
+  price: "Prix du kWh en cours",
+  power: "Puissance instantanée du logement",
+  cost_day: "Coût total aujourd'hui (abonnement compris)",
+  cost_month: "Coût total du mois",
+  cost_cycle: "Coût total du cycle de facturation",
+  energy_day: "Coût énergie aujourd'hui",
+  energy_month: "Coût énergie du mois",
+  energy_cycle: "Coût énergie du cycle",
+  show_split: "Afficher l'énergie du mois par poste Tempo",
+  kwh_prefix: "Préfixe des capteurs <couleur>_<hc|hp>_energie_ce_mois",
+  show_zero: "Afficher les appareils à 0 €",
+  theme: "Couleurs de la carte",
+};
+const ContentCardLinkyNewDevicesEditor = makeEditor(DEV_SCHEMA, DEV_LABELS, DEV_DEFAULTS);
+
 /* ---------------------------------------------------------- enregistrement */
 
 if (typeof customElements !== "undefined") {
@@ -1292,6 +1620,8 @@ if (typeof customElements !== "undefined") {
   define("content-card-linky-new-production-editor", ContentCardLinkyNewProductionEditor);
   define("content-card-linky-new-tempo", ContentCardLinkyNewTempo);
   define("content-card-linky-new-tempo-editor", ContentCardLinkyNewTempoEditor);
+  define("content-card-linky-new-appareils", ContentCardLinkyNewDevices);
+  define("content-card-linky-new-appareils-editor", ContentCardLinkyNewDevicesEditor);
   window.customCards = window.customCards || [];
   const register = (type, name, description) => {
     if (!window.customCards.some((c) => c.type === type)) window.customCards.push({ type, name, description, preview: true });
@@ -1306,6 +1636,11 @@ if (typeof customElements !== "undefined") {
     "content-card-linky-new-production",
     "Carte Enedis Linky New · Production",
     "Production et bilan des échanges avec le réseau (injecté / soutiré), pour MyElectricalData new.",
+  );
+  register(
+    "content-card-linky-new-appareils",
+    "Carte Enedis Linky New · Appareils",
+    "Coûts par circuit et par appareil (jour, mois, cycle), prix du kWh et poste Tempo en cours.",
   );
   console.info(`%c CARTE-ENEDIS-LINKY-NEW %c ${CARD_VERSION} `, "background:#96d21f;color:#1a2434;font-weight:700", "background:#1d93e3;color:#fff");
 }
