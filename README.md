@@ -24,6 +24,7 @@ Ces projets sont **non officiels**, maintenus par Marlboro62, sans lien avec l'�
 | [Script Proxmox (LXC)](https://github.com/Marlboro62/myelectricaldata-proxmox) | Déploie le mode client dans un conteneur LXC Proxmox, sans Docker |
 | **Cartes Lovelace (ce dépôt)** | Affichent conso, Tempo, coût, puissance max, production et bilan dans un tableau de bord Home Assistant |
 | [Carte Linky Appareils](https://github.com/Marlboro62/linky-appareils-card) | Coûts par circuit et par appareil (jour, mois, cycle), au tarif en cours |
+| [Carte Linky Solaire](https://github.com/Marlboro62/linky-solaire-card) | Produit, importé et exporté jour par jour, autoconsommation (bêta) |
 | [Dashboards Grafana](https://github.com/Marlboro62/myelectricaldata-new-grafana) | Analyse la base PostgreSQL de l'add-on (Linky, Tempo, coûts) |
 
 ## Ce qu'affiche la carte
