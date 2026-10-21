@@ -117,6 +117,9 @@ L'export Home Assistant de MyElectricalData crée le capteur `sensor.linky_<pdl>
 
 **Mode `production`** : production de la veille et son évolution, pic d'injection, mois en cours (avec projection), mois dernier, année, meilleur jour, graphique des 7, 14 ou 31 derniers jours, et revenu estimé si vous indiquez un prix de rachat.
 
+<p align="center"><img src="images/production-reelle.jpg" alt="Carte Production avec de vraies données" width="360"></p>
+<p align="center"><sub>Carte Production avec de vraies données, capture partagée par <a href="https://github.com/Userfreedu42">@Userfreedu42</a> (merci !).</sub></p>
+
 ```yaml
 type: custom:content-card-linky-new-production
 entity: sensor.linky_<pdl>_production
