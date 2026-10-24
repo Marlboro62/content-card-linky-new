@@ -58,7 +58,7 @@ Selon la version de Home Assistant, ces entités peuvent aussi s'appeler `sensor
 
 ### Manuellement
 
-1. Copiez `content-card-linky-new.js` dans `/config/www/`.
+1. Téléchargez [`content-card-linky-new.js`](https://raw.githubusercontent.com/Marlboro62/content-card-linky-new/main/content-card-linky-new.js) (clic droit → Enregistrer sous) et copiez-le dans `/config/www/`.
 2. **Paramètres → Tableaux de bord → ⋮ → Ressources → Ajouter** : URL `/local/content-card-linky-new.js?v=0.5.0`, type **Module JavaScript**.
 3. Rechargez la page (Ctrl+F5). Changez le `?v=` à chaque mise à jour du fichier.
 
