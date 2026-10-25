@@ -99,6 +99,8 @@ theme: v2
 
 Dans l'éditeur visuel, chaque couleur se choisit sur une **roue de couleurs** (comme celle des lumières de Home Assistant) : la teinte autour du cercle, une couleur plus pâle vers le centre, et un curseur de **luminosité**. Le code de la couleur s'affiche dans un champ, où l'on peut aussi le saisir, et le bouton **Couleur par défaut** revient au bleu et à l'orange d'origine (l'option disparaît alors du YAML).
 
+Pour essayer sans rien installer : [démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html), réglage **Couleurs HC / HP** → **Choisies avec la roue**. Le texte du détail HC/HP reprend la teinte choisie en restant lisible sur le fond de la carte.
+
 ```yaml
 type: custom:content-card-linky-new
 entity: sensor.linky_<pdl>_consumption
