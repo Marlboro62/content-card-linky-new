@@ -51,6 +51,7 @@
   .seg button[aria-pressed="true"] { background: var(--btn-on); border-color: var(--accent2); font-weight: 600; }
   .seg button:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
   .seg .sw { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  .seg .sw + .sw { margin-left: -4px; }
   .sw.blue { background: #3f7ff0; } .sw.white { background: #e9eef4; box-shadow: inset 0 0 0 1px #9aa6b6; }
   .sw.red { background: #ee4a4a; } .sw.none { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
   .sw.green { background: #5fcf8a; } .sw.orange { background: #f0a33a; }
@@ -110,8 +111,9 @@
       <div class="ctl" data-for="conso"><div class="ctl-l">Semaines (<code>show_week</code>)</div><div class="seg" data-key="week">
         <button data-v="on">Affichées</button><button data-v="off">Masquées</button></div></div>
       <div class="ctl" data-for="conso"><div class="ctl-l">Couleurs HC / HP (<code>hc_color</code>, <code>hp_color</code>)</div><div class="seg" data-key="colors">
-        <button data-v="default">Par défaut</button><button data-v="custom"><i class="sw" style="background:conic-gradient(red, yellow, lime, cyan, blue, magenta, red)"></i>Choisies avec la roue</button></div>
+        <button data-v="default">Par défaut</button><button data-v="custom"><i class="sw" style="background:conic-gradient(red, yellow, lime, cyan, blue, magenta, red)"></i>Choisies avec la roue</button><button data-v="tempo"><i class="sw blue"></i><i class="sw white"></i><i class="sw red"></i>Exemple Tempo (6 couleurs)</button></div>
         <p class="ctl-note">Dans Home Assistant, ces couleurs se choisissent dans l'éditeur visuel de la carte, avec une <b>roue colorimétrique</b> : la teinte autour du cercle, plus pâle vers le centre, et un curseur de luminosité. Avec un contrat Tempo, la case « Couleurs selon la couleur Tempo du jour » ajoute six roues (HC et HP des jours bleus, blancs et rouges). Les mêmes roues sont ci-dessous.</p>
+        <p class="ctl-note">Chez EDF, les jours rouges ne tombent qu'entre le 1<sup>er</sup> novembre et le 31 mars, en semaine, et les jours blancs arrivent surtout avec le froid : en début de saison, une vraie carte n'affiche souvent que des jours bleus. La démo simule des jours blancs et rouges pour voir le rendu des six couleurs à tout moment.</p>
         <div id="wheels" hidden></div></div>
 
       <div class="ctl" data-for="prod"><div class="ctl-l">Prix de rachat (<code>sale_price</code>, exemple)</div><div class="seg" data-key="price">
@@ -380,6 +382,12 @@
       const b = ev.target.closest("button");
       if (!b) return;
       state[seg.dataset.key] = b.dataset.v;
+      if (seg.dataset.key === "colors" && b.dataset.v === "tempo") {
+        // Remplit les six roues, puis « Choisies avec la roue » pour pouvoir les ajuster
+        state.colorset = JSON.stringify({ ...chosenColors(), ...TEMPO_EXAMPLE });
+        state.colors = "custom";
+        if (editor) { editor.remove(); editor = null; }
+      }
       try { localStorage.setItem("linky-demo", JSON.stringify(state)); } catch (e) { /* ignoré */ }
       render();
     });
@@ -392,6 +400,13 @@
     try { return JSON.parse(state.colorset || "{}"); } catch (e) { return {}; }
   }
   function save() { try { localStorage.setItem("linky-demo", JSON.stringify(state)); } catch (e) { /* ignoré */ } }
+  // Exemple de couleurs pour les six postes Tempo (HC plus clair, HP plus soutenu)
+  const TEMPO_EXAMPLE = {
+    hc_blue_color: "#8fb0f0", hp_blue_color: "#3f7ff0",
+    hc_white_color: "#d9dee6", hp_white_color: "#8f9aa8",
+    hc_red_color: "#f39a9a", hp_red_color: "#e53935",
+  };
+
   function drawWheels() {
     const box = document.getElementById("wheels");
     box.hidden = !(state.card === "conso" && state.colors === "custom");
