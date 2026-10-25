@@ -81,7 +81,10 @@ theme: v2
 | `entity` | obligatoire | Capteur de consommation `sensor.linky_<pdl>_consumption` |
 | `title` | `Linky` | Titre affiché |
 | `days` | `14` | Historique du graphique : `7`, `14` ou `31` jours |
-| `subscribed_power` | aucun | Puissance souscrite en kVA, pour la jauge de puissance maximale |
+| `subscribed_power` | aucun | Puissance souscrite en kVA (celle du compteur), pour la jauge de puissance maximale |
+| `subscription_price` | aucun | Abonnement mensuel TTC en €/mois : ajouté au coût de chaque jour, au prorata des jours du mois (18,36 € en octobre : 0,59 € par jour) |
+| `hc_price`, `hp_price` | aucun | Prix du kWh TTC en heures creuses et pleines (€/kWh), pour un contrat dont les prix ne sont pas dans MyElectricalData. Remplacent les prix de l'offre et les prix Tempo pour le calcul du coût |
+| `base_price` | aucun | Prix du kWh TTC pour une option Base (€/kWh), utilisé si `hc_price` / `hp_price` ne sont pas renseignés |
 | `theme` | `v2` | `v2` : style bleu nuit de l'interface MyElectricalData (valeur conservée pour compatibilité) ; `auto` : style MyElectricalData, bleu nuit quand Home Assistant est en mode sombre et clair en mode clair ; `ha` : couleurs du thème Home Assistant |
 | `show_cost` | `true` | Afficher les coûts estimés |
 | `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
@@ -182,7 +185,8 @@ consumption_entity: sensor.linky_<pdl>_consumption
 
 ## À savoir
 
-- **Coût estimé**, hors abonnement :
+- **Coût estimé**, hors abonnement sauf si `subscription_price` est renseigné :
+  - **prix saisis dans la carte** (`hc_price` + `hp_price`, ou `base_price`) : ils sont prioritaires, pour un contrat dont les prix ne sont pas dans MyElectricalData (par exemple un Zen Fixe souscrit avant la grille actuelle) ;
   - **offre avec prix HC / HP ou Base** (Zen Fixe, Tarif Bleu…) : coût calculé par MyElectricalData avec l'offre choisie sur le PDL (attribut `dailyweek_cost`). Pour un prix différent de la grille actuelle (contrat souscrit plus tôt), choisir la bonne grille dans MyElectricalData, case « Afficher les offres obsolètes » ;
   - **Tempo** : calculé par la carte (HC et HP du jour multipliés par le prix Tempo de la couleur du jour). Les heures creuses de 0 h à 6 h appartiennent en réalité au jour Tempo de la veille : l'estimation peut donc légèrement différer de la facture.
 - **Jours Tempo restants** : calculés à partir du quota et des jours utilisés.

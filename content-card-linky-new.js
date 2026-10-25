@@ -150,6 +150,24 @@ const cssColor = (value) => {
   return null;
 };
 
+/** Prix du kWh saisis dans la carte (hc_price + hp_price, ou base_price), en €/kWh ; null si non renseignés. */
+const positivePrice = (v) => {
+  const x = Number(typeof v === "string" ? v.replace(",", ".") : v);
+  return Number.isFinite(x) && x > 0 ? x : null;
+};
+const manualPrices = (c) => {
+  const n = positivePrice;
+  const hc = n(c.hc_price), hp = n(c.hp_price), base = n(c.base_price);
+  if (hc !== null && hp !== null) return { hc, hp, base };
+  return base !== null ? { hc: null, hp: null, base } : null;
+};
+/** Coût d'un jour avec les prix saisis : HC et HP si connus, sinon prix Base sur le total. */
+const manualCost = (d, p) => {
+  if (p.hc !== null && d.hc !== null && d.hp !== null) return d.hc * p.hc + d.hp * p.hp;
+  if (p.base !== null && d.total !== null) return d.total * p.base;
+  return null;
+};
+
 /** Couleurs Tempo pour lesquelles on peut choisir des couleurs HC / HP propres (hc_blue_color … hp_red_color). */
 const TEMPO_KEYS = ["blue", "white", "red"];
 const hasTempoColors = (c) => TEMPO_KEYS.some((t) => cssColor(c[`hc_${t}_color`]) || cssColor(c[`hp_${t}_color`]));
@@ -353,15 +371,35 @@ class ContentCardLinkyNew extends HTMLElement {
     const all = MED.days(a);
     const prices = c.show_cost ? this._prices() : null;
     const hpPct = MED.num(a.peak_offpeak_percent);
-    // Offre avec prix HC/HP (Base, HC/HP, Zen Fixe…) : coûts de MyElectricalData, au prix de cette offre.
-    // Sinon (Tempo) : calcul de la carte avec les prix Tempo du jour.
-    const offerPriced = c.show_cost && all.some((d) => d.offerCost !== null);
+    // Source du coût, par priorité :
+    // 1. prix saisis dans la carte (contrat dont les prix ne sont pas dans MyElectricalData) ;
+    // 2. offre avec prix HC/HP (Base, HC/HP, Zen Fixe…) : coûts de MyElectricalData, au prix de cette offre ;
+    // 3. sinon (Tempo) : calcul de la carte avec les prix Tempo du jour.
+    const manual = c.show_cost ? manualPrices(c) : null;
+    const offerPriced = !manual && c.show_cost && all.some((d) => d.offerCost !== null);
     all.forEach((d) => {
       d.est = d.hc === null || d.hp === null ? MED.estimate(d, hpPct) : null;
+      if (manual) {
+        d.cost = manualCost(d, manual);
+        d.costEst = d.cost === null && d.est ? manualCost({ ...d, ...d.est }, manual) : null;
+        return;
+      }
       d.cost = offerPriced ? d.offerCost : MED.cost(d, prices);
       d.costEst = !offerPriced && d.cost === null && d.est ? MED.cost({ ...d, ...d.est }, prices) : null;
     });
     this._offerPriced = offerPriced;
+    this._manualPriced = !!manual;
+    // Abonnement mensuel saisi : ajouté à chaque jour, au prorata des jours du mois (18,36 € en octobre : 0,59 €/jour)
+    const sub = c.show_cost ? positivePrice(c.subscription_price) : null;
+    this._subscription = sub;
+    if (sub !== null) {
+      all.forEach((d) => {
+        if (!d.date) return;
+        d.sub = sub / new Date(d.date.getFullYear(), d.date.getMonth() + 1, 0).getDate();
+        if (d.cost !== null) d.cost += d.sub;
+        if (d.costEst !== null) d.costEst += d.sub;
+      });
+    }
 
     const shown = all.slice(0, Math.max(1, Math.min(c.days, all.length)));
     if (this._selected >= shown.length) this._selected = 0;
@@ -431,10 +469,10 @@ class ContentCardLinkyNew extends HTMLElement {
           !this._config.show_cost
             ? ""
             : day.cost !== null
-            ? `<div class="cost">${euro(day.cost)}</div><div class="cost-l">coût de la journée</div>`
+            ? `<div class="cost">${euro(day.cost)}</div><div class="cost-l">coût de la journée${day.sub ? `, dont abonnement ${euro(day.sub)}` : ""}</div>`
             : day.costEst !== null
               ? `<div class="cost est">≈ ${euro(day.costEst)}</div><div class="cost-l">coût estimé, en attendant le détail HC/HP</div>`
-              : `<div class="cost none">—</div><div class="cost-l">${this._offerPriced || (prices && (day.hc === null || day.hp === null)) ? "coût disponible avec le détail HC/HP" : !prices ? "prix Tempo introuvables" : "couleur Tempo du jour inconnue"}</div>`
+              : `<div class="cost none">—</div><div class="cost-l">${this._manualPriced || this._offerPriced || (prices && (day.hc === null || day.hp === null)) ? "coût disponible avec le détail HC/HP" : !prices ? "prix Tempo introuvables" : "couleur Tempo du jour inconnue"}</div>`
         }
         ${day.mp !== null ? `<div class="hero-p">Pic ${fmt(day.mp, 2)} kVA${day.mpTime ? ` à ${day.mpTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}</div>` : ""}
       </div>
@@ -647,9 +685,12 @@ class ContentCardLinkyNew extends HTMLElement {
     const bits = [];
     if (last) bits.push(`Données Enedis jusqu'au ${last.date.toLocaleDateString("fr-FR")}`);
     if (this._config.show_cost) {
-      bits.push(this._offerPriced
-        ? "coûts estimés hors abonnement, au prix de l'offre choisie dans MyElectricalData"
-        : prices ? "coûts estimés hors abonnement, au prix Tempo du jour" : "prix Tempo introuvables, coûts masqués");
+      const abo = this._subscription ? `abonnement compris (${euro(this._subscription)}/mois)` : "hors abonnement";
+      bits.push(this._manualPriced
+        ? `coûts estimés ${abo}, au prix saisi dans la carte`
+        : this._offerPriced
+        ? `coûts estimés ${abo}, au prix de l'offre choisie dans MyElectricalData`
+        : prices ? `coûts estimés ${abo}, au prix Tempo du jour` : "prix Tempo introuvables, coûts masqués");
     }
     if (all.some((d) => d.est) && hpPct !== null) bits.push(`barres claires : répartition HC/HP estimée (${fmt(hpPct, 1)} % HP)`);
     return `<footer>${bits.join(", ")}.</footer>`;
@@ -1256,6 +1297,11 @@ const SCHEMA = [
     },
   },
   { name: "subscribed_power", selector: { number: { min: 3, max: 36, step: 3, mode: "box", unit_of_measurement: "kVA" } } },
+  // Prix de son contrat, quand ils ne sont pas dans MyElectricalData (facultatifs)
+  { name: "subscription_price", selector: { number: { min: 0, max: 200, step: 0.01, mode: "box", unit_of_measurement: "€/mois" } } },
+  { name: "hc_price", selector: { number: { min: 0, max: 2, step: 0.0001, mode: "box", unit_of_measurement: "€/kWh" } } },
+  { name: "hp_price", selector: { number: { min: 0, max: 2, step: 0.0001, mode: "box", unit_of_measurement: "€/kWh" } } },
+  { name: "base_price", selector: { number: { min: 0, max: 2, step: 0.0001, mode: "box", unit_of_measurement: "€/kWh" } } },
   {
     name: "theme",
     selector: {
@@ -1284,7 +1330,8 @@ const LABELS = {
   entity: "Consommation (sensor.linky_<pdl>_consumption)",
   title: "Titre",
   days: "Historique affiché",
-  subscribed_power: "Puissance souscrite",
+  subscribed_power: "Puissance souscrite (kVA du compteur)",
+  subscription_price: "Abonnement mensuel TTC (facultatif : ajouté au coût, au prorata des jours)",
   theme: "Couleurs de la carte",
   show_cost: "Afficher les coûts estimés",
   show_pdl: "Afficher le numéro de PDL",
@@ -1295,6 +1342,9 @@ const LABELS = {
   tempo_info: "Tempo, jours restants",
   ecowatt: "EcoWatt (masqué si indisponible)",
   price_prefix: "Préfixe des capteurs de prix Tempo",
+  hc_price: "Prix du kWh en heures creuses, TTC (facultatif : remplace celui de l'offre)",
+  hp_price: "Prix du kWh en heures pleines, TTC (facultatif : remplace celui de l'offre)",
+  base_price: "Prix du kWh, option Base, TTC (facultatif)",
 };
 
 const DAYS_SELECT = SCHEMA.find((s) => s.name === "days");
