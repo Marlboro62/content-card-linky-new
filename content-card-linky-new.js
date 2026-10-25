@@ -147,12 +147,13 @@ const cssColor = (value) => {
   return null;
 };
 
-/** Style à poser sur ha-card pour les couleurs HC / HP personnalisées (texte du détail compris). */
+/** Style à poser sur ha-card pour les couleurs HC / HP personnalisées. Le texte du détail mélange la
+ *  couleur choisie avec celle du texte de la carte : même teinte, mais lisible même si la couleur est foncée. */
 const hcHpStyle = (c) => {
   const vars = [];
   for (const k of ["hc", "hp"]) {
     const col = cssColor(c[`${k}_color`]);
-    if (col) vars.push(`--med-${k}: ${col}; --med-${k}-text: ${col};`);
+    if (col) vars.push(`--med-${k}: ${col}; --med-${k}-text: color-mix(in srgb, ${col} 65%, var(--med-text));`);
   }
   return vars.length ? ` style="${esc(vars.join(" "))}"` : "";
 };
