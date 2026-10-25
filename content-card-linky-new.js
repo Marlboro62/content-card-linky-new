@@ -1329,7 +1329,8 @@ const PROD_LABELS = {
  *  champ du code couleur et retour à la couleur par défaut. */
 const WHEEL_STYLE = `<style>
 .med-colors { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 16px; }
-.med-color { border: 1px solid var(--divider-color, #e0e0e0); border-radius: 12px; padding: 12px; }
+.med-colors[hidden] { display: none; }
+.med-color { border: 1px solid var(--divider-color, #e0e0e0); border-radius: 12px; padding: 12px; min-width: 0; }
 .med-color-t { font-weight: 500; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
 .med-color-t i { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--divider-color, #ccc); flex: none; }
 .med-wheel { position: relative; width: 180px; max-width: 100%; aspect-ratio: 1; margin: 0 auto; border-radius: 50%;
@@ -1340,7 +1341,7 @@ const WHEEL_STYLE = `<style>
 .med-wheel .dot { position: absolute; width: 18px; height: 18px; margin: -11px 0 0 -11px; border-radius: 50%;
   border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .5), 0 1px 4px rgba(0, 0, 0, .4); pointer-events: none; }
 .med-color label { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .9rem; }
-.med-color input[type=range] { flex: 1; accent-color: var(--primary-color, #03a9f4); }
+.med-color input[type=range] { flex: 1; min-width: 0; width: 100%; accent-color: var(--primary-color, #03a9f4); }
 .med-color-r { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .med-color-r input[type=text] { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border-radius: 6px;
   border: 1px solid var(--divider-color, #ccc); background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); }
@@ -1348,10 +1349,13 @@ const WHEEL_STYLE = `<style>
   border: 1px solid var(--divider-color, #ccc); background: transparent; color: var(--primary-color, #03a9f4); }
 .med-color small { display: block; margin-top: 6px; color: var(--secondary-text-color, #666); }
 .med-tempo-t { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-weight: 500; cursor: pointer; }
-.med-small { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.med-small { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 10px; }
 .med-small .med-color { padding: 10px; }
 .med-small .med-wheel { width: 120px; }
-.med-small .med-color label { font-size: .8rem; }
+/* Colonnes étroites : luminosité sous son libellé, code et bouton l'un sous l'autre */
+.med-small .med-color label { flex-direction: column; align-items: stretch; gap: 4px; font-size: .8rem; }
+.med-small .med-color-r { flex-wrap: wrap; }
+.med-small .med-color-r input[type=text], .med-small .med-color-r button { flex: 1 1 100%; }
 .med-small .med-color-r button { padding: 6px 8px; }
 </style>`;
 
