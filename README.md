@@ -94,10 +94,27 @@ theme: v2
 | `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo (`sensor.myelectricaldata_tempo_price_` essayé automatiquement si les premiers n'existent pas) |
 | `hc_color` | `#4a7bd8` (bleu) | Couleur des heures creuses : graphique, barre HC/HP, légende et détail du jour. Code `"#1e88e5"` (entre guillemets en YAML), `[r, g, b]`, `rgb(...)` ou nom de couleur CSS |
 | `hp_color` | `#d27333` (orange) | Couleur des heures pleines, mêmes formats que `hc_color` |
+| `hc_blue_color`, `hp_blue_color` | `hc_color`, `hp_color` | Couleurs HC et HP des **jours bleus** (contrat Tempo) |
+| `hc_white_color`, `hp_white_color` | `hc_color`, `hp_color` | Couleurs HC et HP des **jours blancs** |
+| `hc_red_color`, `hp_red_color` | `hc_color`, `hp_color` | Couleurs HC et HP des **jours rouges** |
 
 ### Couleurs des heures creuses et pleines
 
 Dans l'éditeur visuel, chaque couleur se choisit sur une **roue de couleurs** (comme celle des lumières de Home Assistant) : la teinte autour du cercle, une couleur plus pâle vers le centre, et un curseur de **luminosité**. Le code de la couleur s'affiche dans un champ, où l'on peut aussi le saisir, et le bouton **Couleur par défaut** revient au bleu et à l'orange d'origine (l'option disparaît alors du YAML).
+
+
+**Contrat Tempo : six couleurs.** Dans l'éditeur, la case **Couleurs selon la couleur Tempo du jour** ajoute six roues : HC et HP des jours bleus, blancs et rouges. Chaque barre du graphique et la barre HC/HP du jour prennent les couleurs de leur jour Tempo, et la légende affiche une paire HC / HP par couleur présente sur la période. Une couleur non réglée reprend `hc_color` / `hp_color` ; décocher la case retire les six options.
+
+```yaml
+type: custom:content-card-linky-new
+entity: sensor.linky_<pdl>_consumption
+hc_blue_color: "#7fb3ff"
+hp_blue_color: "#0047ab"
+hc_white_color: "#e0e0e0"
+hp_white_color: "#8a8a8a"
+hc_red_color: "#ff9e9e"
+hp_red_color: "#c00000"
+```
 
 Pour essayer sans rien installer : [démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html), réglage **Couleurs HC / HP** → **Choisies avec la roue**. Le texte du détail HC/HP reprend la teinte choisie en restant lisible sur le fond de la carte.
 

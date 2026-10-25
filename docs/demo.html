@@ -111,7 +111,7 @@
         <button data-v="on">Affichées</button><button data-v="off">Masquées</button></div></div>
       <div class="ctl" data-for="conso"><div class="ctl-l">Couleurs HC / HP (<code>hc_color</code>, <code>hp_color</code>)</div><div class="seg" data-key="colors">
         <button data-v="default">Par défaut</button><button data-v="custom"><i class="sw" style="background:conic-gradient(red, yellow, lime, cyan, blue, magenta, red)"></i>Choisies avec la roue</button></div>
-        <p class="ctl-note">Dans Home Assistant, ces couleurs se choisissent dans l'éditeur visuel de la carte, avec une <b>roue colorimétrique</b> : la teinte autour du cercle, plus pâle vers le centre, et un curseur de luminosité. Les mêmes roues sont ci-dessous.</p>
+        <p class="ctl-note">Dans Home Assistant, ces couleurs se choisissent dans l'éditeur visuel de la carte, avec une <b>roue colorimétrique</b> : la teinte autour du cercle, plus pâle vers le centre, et un curseur de luminosité. Avec un contrat Tempo, la case « Couleurs selon la couleur Tempo du jour » ajoute six roues (HC et HP des jours bleus, blancs et rouges). Les mêmes roues sont ci-dessous.</p>
         <div id="wheels" hidden></div></div>
 
       <div class="ctl" data-for="prod"><div class="ctl-l">Prix de rachat (<code>sale_price</code>, exemple)</div><div class="seg" data-key="price">
@@ -172,7 +172,7 @@
 
   const state = {
     card: "conso", price: "none", sky: "mixed",
-    page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on", tempo: "on", week: "on", colors: "default", hc: "#00bfa5", hp: "#ab47bc",
+    page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on", tempo: "on", week: "on", colors: "default", colorset: JSON.stringify({ hc_color: "#00bfa5", hp_color: "#ab47bc" }),
     today: "blue", tomorrow: "white", split: "yes", power: "9", over: "no", eco: "1",
   };
   try {
@@ -344,10 +344,7 @@
     if (state.cost === "off") c.show_cost = false;
     if (state.tempo === "off") c.show_tempo = false;
     if (state.week === "on") c.show_week = true;
-    if (state.colors === "custom") {
-      if (state.hc) c.hc_color = state.hc;
-      if (state.hp) c.hp_color = state.hp;
-    }
+    if (state.colors === "custom") Object.assign(c, chosenColors());
     return c;
   }
 
@@ -390,6 +387,10 @@
 
   /* ---------- roues de couleurs : l'éditeur visuel de la carte (sans le formulaire de Home Assistant) ---------- */
   let editor = null;
+  /** Couleurs choisies avec les roues : hc_color, hp_color et, en option, les six couleurs Tempo */
+  function chosenColors() {
+    try { return JSON.parse(state.colorset || "{}"); } catch (e) { return {}; }
+  }
   function save() { try { localStorage.setItem("linky-demo", JSON.stringify(state)); } catch (e) { /* ignoré */ } }
   function drawWheels() {
     const box = document.getElementById("wheels");
@@ -398,15 +399,12 @@
     editor = document.createElement("content-card-linky-new-editor");
     editor.addEventListener("config-changed", (ev) => {
       const v = ev.detail.config;
-      state.hc = v.hc_color || "";
-      state.hp = v.hp_color || "";
+      state.colorset = JSON.stringify(Object.fromEntries(Object.entries(v).filter(([k]) => k.endsWith("_color"))));
       save();
       render();
     });
     box.appendChild(editor);
-    const cfg = { type: "custom:content-card-linky-new", entity: ENTITY };
-    if (state.hc) cfg.hc_color = state.hc;
-    if (state.hp) cfg.hp_color = state.hp;
+    const cfg = { type: "custom:content-card-linky-new", entity: ENTITY, ...chosenColors() };
     editor.setConfig(cfg);
     editor.hass = { states: {}, themes: { darkMode: state.page === "dark" } };
   }

@@ -147,13 +147,21 @@ const cssColor = (value) => {
   return null;
 };
 
-/** Style à poser sur ha-card pour les couleurs HC / HP personnalisées. Le texte du détail mélange la
- *  couleur choisie avec celle du texte de la carte : même teinte, mais lisible même si la couleur est foncée. */
+/** Couleurs Tempo pour lesquelles on peut choisir des couleurs HC / HP propres (hc_blue_color … hp_red_color). */
+const TEMPO_KEYS = ["blue", "white", "red"];
+const hasTempoColors = (c) => TEMPO_KEYS.some((t) => cssColor(c[`hc_${t}_color`]) || cssColor(c[`hp_${t}_color`]));
+
+/** Style à poser sur ha-card pour les couleurs HC / HP personnalisées (générales, puis par couleur Tempo).
+ *  Le texte du détail mélange la couleur choisie avec celle du texte de la carte : même teinte,
+ *  mais lisible même si la couleur est foncée. */
 const hcHpStyle = (c) => {
   const vars = [];
-  for (const k of ["hc", "hp"]) {
-    const col = cssColor(c[`${k}_color`]);
-    if (col) vars.push(`--med-${k}: ${col}; --med-${k}-text: color-mix(in srgb, ${col} 65%, var(--med-text));`);
+  for (const t of ["", ...TEMPO_KEYS]) {
+    for (const k of ["hc", "hp"]) {
+      const col = cssColor(c[t ? `${k}_${t}_color` : `${k}_color`]);
+      const v = t ? `--med-${k}-${t}` : `--med-${k}`;
+      if (col) vars.push(`${v}: ${col}; ${v}-text: color-mix(in srgb, ${col} 65%, var(--med-text));`);
+    }
   }
   return vars.length ? ` style="${esc(vars.join(" "))}"` : "";
 };
@@ -245,6 +253,15 @@ const DEFAULTS = {
 const HC_HP_COLORS = [
   { key: "hc_color", label: "Couleur des heures creuses (HC)", def: "#4a7bd8" },
   { key: "hp_color", label: "Couleur des heures pleines (HP)", def: "#d27333" },
+  // Couleurs selon la couleur Tempo du jour : sans réglage, celles des heures creuses / pleines ci-dessus
+  ...["blue", "white", "red"].flatMap((t) =>
+    ["hc", "hp"].map((k) => ({
+      key: `${k}_${t}_color`,
+      label: `${k.toUpperCase()} · jour ${{ blue: "Bleu", white: "Blanc", red: "Rouge" }[t]}`,
+      group: "tempo",
+      fallback: `${k}_color`,
+    })),
+  ),
 ];
 
 class ContentCardLinkyNew extends HTMLElement {
@@ -416,7 +433,7 @@ class ContentCardLinkyNew extends HTMLElement {
       </div>
       ${
         split
-          ? `<div class="split"><div class="bar"><i class="hc" style="width:${hcPct}%"></i><i class="hp" style="width:${100 - hcPct}%"></i></div>
+          ? `<div class="split${TEMPO[day.tempo] ? ` tb-${day.tempo}` : ""}"><div class="bar"><i class="hc" style="width:${hcPct}%"></i><i class="hp" style="width:${100 - hcPct}%"></i></div>
              <div class="split-l"><span class="k-hc">Heures creuses ${fmt(day.hc, 2)} kWh</span><span class="k-hp">Heures pleines ${fmt(day.hp, 2)} kWh</span></div></div>`
           : `<div class="split wait">Détail heures creuses / heures pleines pas encore publié par Enedis</div>`
       }
@@ -513,19 +530,20 @@ class ContentCardLinkyNew extends HTMLElement {
     const bars = chrono
       .map((d, k) => {
         const x = k * slot + (slot - w) / 2;
+        const tb = TEMPO[d.tempo] ? ` tb-${d.tempo}` : "";
         const sel = d.i === this._selected ? `<rect class="sel" x="${k * slot}" y="0" width="${slot}" height="${H}"/>` : "";
         let body = "";
         if (d.hc !== null && d.hp !== null) {
           const hHc = (d.hc / max) * H;
           const hHp = (d.hp / max) * H;
-          body = `<rect class="hc" x="${x}" y="${H - hHc}" width="${w}" height="${hHc}"/>
-                  <rect class="hp" x="${x}" y="${H - hHc - hHp}" width="${w}" height="${hHp}"/>`;
+          body = `<rect class="hc${tb}" x="${x}" y="${H - hHc}" width="${w}" height="${hHc}"/>
+                  <rect class="hp${tb}" x="${x}" y="${H - hHc - hHp}" width="${w}" height="${hHp}"/>`;
         } else if (d.est) {
           const hHc = (d.est.hc / max) * H;
           const hHp = (d.est.hp / max) * H;
           body = `<g class="est"><title>Total ${fmt(d.total, 2)} kWh, répartition HC/HP estimée</title>
-                  <rect class="hc" x="${x}" y="${H - hHc}" width="${w}" height="${hHc}"/>
-                  <rect class="hp" x="${x}" y="${H - hHc - hHp}" width="${w}" height="${hHp}"/></g>`;
+                  <rect class="hc${tb}" x="${x}" y="${H - hHc}" width="${w}" height="${hHc}"/>
+                  <rect class="hp${tb}" x="${x}" y="${H - hHc - hHp}" width="${w}" height="${hHp}"/></g>`;
         } else if (d.total !== null) {
           const h = (d.total / max) * H;
           body = `<rect class="partial" x="${x}" y="${H - h}" width="${w}" height="${h}"/>`;
@@ -543,9 +561,17 @@ class ContentCardLinkyNew extends HTMLElement {
           <span>${name}</span><b>${num}</b>${showTempo ? '<i class="dot"></i>' : ""}</button>`;
       })
       .join("");
+    // Couleurs Tempo réglées : une paire HC / HP par couleur Tempo présente sur la période
+    let legend = '<i class="k-hc"></i>HC<i class="k-hp"></i>HP';
+    if (hasTempoColors(this._config)) {
+      const present = TEMPO_KEYS.filter((t) => chrono.some((d) => d.tempo === t));
+      const others = chrono.some((d) => !TEMPO[d.tempo] && (d.hc !== null || d.est));
+      legend = `<span class="legend-t">HC / HP</span>${present.map((t) => `<i class="k-hc tb-${t}"></i><i class="k-hp tb-${t} pair"></i>${TEMPO[t].label}`).join("")}${
+        others ? '<i class="k-hc"></i><i class="k-hp pair"></i>Autres' : ""}`;
+    }
     return `<section class="chart">
       <div class="chart-h"><span>${n} derniers jours</span>
-        <span class="legend"><i class="k-hc"></i>HC<i class="k-hp"></i>HP</span></div>
+        <span class="legend">${legend}</span></div>
       <svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" role="img" aria-label="Consommation des ${n} derniers jours">${bars}</svg>
       <div class="days" style="grid-template-columns:repeat(${n},1fr)">${labels}</div>
     </section>`;
@@ -1055,6 +1081,16 @@ ha-card.mini { border-radius: 14px; }
 
 /* ------------------------------------------------------------------ style */
 
+/** Règles des couleurs par couleur Tempo : sans réglage, elles retombent sur les couleurs HC / HP générales. */
+const TEXT_DEFAULT = { hc: ["#8fb0f0", "#2f5fb8"], hp: ["#eaa070", "#b35619"] };
+const TEMPO_CSS = TEMPO_KEYS.flatMap((t) =>
+  ["hc", "hp"].map((k) => `
+.chart rect.${k}.tb-${t} { fill: var(--med-${k}-${t}, var(--med-${k})); }
+.split.tb-${t} .bar .${k}, .legend .k-${k}.tb-${t} { background: var(--med-${k}-${t}, var(--med-${k})); }
+.split.tb-${t} .k-${k} { color: var(--med-${k}-${t}-text, var(--med-${k}-text, ${TEXT_DEFAULT[k][0]})); }
+ha-card.light .split.tb-${t} .k-${k} { color: var(--med-${k}-${t}-text, var(--med-${k}-text, ${TEXT_DEFAULT[k][1]})); }`),
+).join("");
+
 const STYLE = `<style>
 :host {
   --med-bg: #1a2434; --med-surface: #212d40; --med-line: #2f3d55;
@@ -1119,6 +1155,11 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .legend { display: flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-left: 6px; }
 .legend .k-hc { background: var(--med-hc); } .legend .k-hp { background: var(--med-hp); }
+.chart-h { flex-wrap: wrap; row-gap: 4px; }
+.chart-h > span:first-child, .legend .legend-t { white-space: nowrap; }
+.legend .legend-t { margin-right: 2px; }
+.legend i.pair { margin-left: 2px; }
+${TEMPO_CSS}
 .chart svg { width: 100%; height: 130px; display: block; }
 .chart rect.hc { fill: var(--med-hc); } .chart rect.hp { fill: var(--med-hp); }
 .chart rect.partial { fill: var(--med-muted); opacity: .35; }
@@ -1306,6 +1347,12 @@ const WHEEL_STYLE = `<style>
 .med-color-r button { font: inherit; font-size: .85rem; padding: 6px 10px; border-radius: 6px; cursor: pointer;
   border: 1px solid var(--divider-color, #ccc); background: transparent; color: var(--primary-color, #03a9f4); }
 .med-color small { display: block; margin-top: 6px; color: var(--secondary-text-color, #666); }
+.med-tempo-t { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-weight: 500; cursor: pointer; }
+.med-small { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.med-small .med-color { padding: 10px; }
+.med-small .med-wheel { width: 120px; }
+.med-small .med-color label { font-size: .8rem; }
+.med-small .med-color-r button { padding: 6px 8px; }
 </style>`;
 
 function makeEditor(schema, labels, defaults, colors = []) {
@@ -1358,24 +1405,60 @@ function makeEditor(schema, labels, defaults, colors = []) {
       if (hex) v[key] = hex;
       else delete v[key];
       this._config = v;
-      this._paintColor(key);
+      // Les roues Tempo non réglées suivent les couleurs HC / HP générales : tout repeindre
+      for (const c of colors) this._paintColor(c.key);
       this._emit();
+    }
+
+    /** Couleur affichée quand l'option n'est pas réglée : la sienne par défaut, ou celle de l'option de repli. */
+    _fallbackHex(c) {
+      if (!c.fallback) return c.def;
+      const base = colors.find((x) => x.key === c.fallback);
+      return toHex(this._config[c.fallback]) || base.def;
     }
 
     _drawColors() {
       if (!this._colors) {
-        this._colors = document.createElement("div");
-        this._colors.innerHTML = WHEEL_STYLE + `<div class="med-colors">${colors.map((c) => `
+        const block = (c) => {
+          const small = c.group === "tempo";
+          const def = c.fallback ? `couleur ${c.key.slice(0, 2).toUpperCase()} ci-dessus` : c.def;
+          return `
           <div class="med-color" data-key="${c.key}">
             <div class="med-color-t"><i></i>${esc(c.label)}</div>
             <div class="med-wheel"><div class="shade"></div><div class="dot"></div></div>
             <label>Luminosité <input type="range" min="10" max="100" step="1"></label>
-            <div class="med-color-r"><input type="text" spellcheck="false" placeholder="${c.def}" aria-label="Code couleur">
-              <button type="button">Couleur par défaut</button></div>
-            <small>Par défaut : ${c.def}</small>
-          </div>`).join("")}</div>`;
+            <div class="med-color-r"><input type="text" spellcheck="false" aria-label="Code couleur">
+              <button type="button">${small ? "Par défaut" : "Couleur par défaut"}</button></div>
+            <small>Par défaut : ${def}</small>
+          </div>`;
+        };
+        const main = colors.filter((c) => !c.group);
+        const tempo = colors.filter((c) => c.group === "tempo");
+        this._colors = document.createElement("div");
+        this._colors.innerHTML = WHEEL_STYLE + `<div class="med-colors">${main.map(block).join("")}</div>${
+          tempo.length
+            ? `<label class="med-tempo-t"><input type="checkbox"> Couleurs selon la couleur Tempo du jour (6 roues)</label>
+               <div class="med-colors med-small" hidden>${tempo.map(block).join("")}</div>`
+            : ""}`;
         this.appendChild(this._colors);
         for (const c of colors) this._bindColor(c);
+        const toggle = this._colors.querySelector(".med-tempo-t input");
+        if (toggle) {
+          const grid = this._colors.querySelector(".med-small");
+          toggle.checked = tempo.some((c) => this._config[c.key] !== undefined);
+          grid.hidden = !toggle.checked;
+          toggle.addEventListener("change", () => {
+            grid.hidden = !toggle.checked;
+            // Décocher retire les six couleurs Tempo : la carte reprend les couleurs HC / HP générales
+            if (!toggle.checked && tempo.some((c) => this._config[c.key] !== undefined)) {
+              const v = { ...this._config };
+              for (const c of tempo) delete v[c.key];
+              this._config = v;
+              for (const c of colors) this._paintColor(c.key);
+              this._emit();
+            }
+          });
+        }
       }
       for (const c of colors) this._paintColor(c.key);
     }
@@ -1385,7 +1468,7 @@ function makeEditor(schema, labels, defaults, colors = []) {
       const wheel = box.querySelector(".med-wheel");
       const range = box.querySelector("input[type=range]");
       const text = box.querySelector("input[type=text]");
-      const current = () => hexToHsv(toHex(this._config[c.key]) || c.def);
+      const current = () => hexToHsv(toHex(this._config[c.key]) || this._fallbackHex(c));
       const pick = (ev) => {
         const r = wheel.getBoundingClientRect();
         const dx = ev.clientX - (r.left + r.width / 2), dy = ev.clientY - (r.top + r.height / 2);
@@ -1421,7 +1504,7 @@ function makeEditor(schema, labels, defaults, colors = []) {
       const box = this._colors?.querySelector(`[data-key="${key}"]`);
       if (!c || !box) return;
       const chosen = toHex(this._config[key]);
-      const hex = chosen || c.def;
+      const hex = chosen || this._fallbackHex(c);
       const { h, s, v } = hexToHsv(hex);
       const dot = box.querySelector(".dot");
       const rad = (h * Math.PI) / 180;
@@ -1435,6 +1518,7 @@ function makeEditor(schema, labels, defaults, colors = []) {
       const text = box.querySelector("input[type=text]");
       const raw = this._config[key];
       if (document.activeElement !== text) text.value = raw === undefined ? "" : typeof raw === "string" ? raw : chosen || "";
+      text.placeholder = this._fallbackHex(c);
     }
   };
 }
