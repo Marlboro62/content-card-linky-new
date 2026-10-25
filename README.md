@@ -92,6 +92,19 @@ theme: v2
 | `tempo_info` | `sensor.edf_tempo_info` | Jours Tempo restants. Selon l'installation, l'entité peut s'appeler `sensor.edf_tempo_tempo_info` : la carte essaie les deux noms si celui-ci n'existe pas |
 | `ecowatt` | `sensor.rte_ecowatt_j0` | Signal EcoWatt (bloc masqué si indisponible) |
 | `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo (`sensor.myelectricaldata_tempo_price_` essayé automatiquement si les premiers n'existent pas) |
+| `hc_color` | `#4a7bd8` (bleu) | Couleur des heures creuses : graphique, barre HC/HP, légende et détail du jour. Code `"#1e88e5"` (entre guillemets en YAML), `[r, g, b]`, `rgb(...)` ou nom de couleur CSS |
+| `hp_color` | `#d27333` (orange) | Couleur des heures pleines, mêmes formats que `hc_color` |
+
+### Couleurs des heures creuses et pleines
+
+Dans l'éditeur visuel, chaque couleur se choisit sur une **roue de couleurs** (comme celle des lumières de Home Assistant) : la teinte autour du cercle, une couleur plus pâle vers le centre, et un curseur de **luminosité**. Le code de la couleur s'affiche dans un champ, où l'on peut aussi le saisir, et le bouton **Couleur par défaut** revient au bleu et à l'orange d'origine (l'option disparaît alors du YAML).
+
+```yaml
+type: custom:content-card-linky-new
+entity: sensor.linky_<pdl>_consumption
+hc_color: "#1e88e5"
+hp_color: "#e53935"
+```
 
 ## Mini-carte Tempo
 

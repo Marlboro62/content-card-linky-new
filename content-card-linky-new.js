@@ -133,6 +133,58 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+/** Couleur choisie (hc_color, hp_color) : "#1e88e5", [r, g, b], rgb()/hsl(), var(--x) ou nom CSS.
+ *  null si absente ou invalide (la couleur par défaut s'applique). */
+const cssColor = (value) => {
+  if (Array.isArray(value)) {
+    const n = value.map(Number);
+    return n.length === 3 && n.every(Number.isFinite) ? `rgb(${n.map((v) => Math.max(0, Math.min(255, Math.round(v)))).join(", ")})` : null;
+  }
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  if (/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return v;
+  if (/^(rgba?|hsla?)\([\d\s.,%/]+\)$/i.test(v) || /^var\(--[\w-]+\)$/.test(v) || /^[a-z]{3,20}$/i.test(v)) return v;
+  return null;
+};
+
+/** Style à poser sur ha-card pour les couleurs HC / HP personnalisées (texte du détail compris). */
+const hcHpStyle = (c) => {
+  const vars = [];
+  for (const k of ["hc", "hp"]) {
+    const col = cssColor(c[`${k}_color`]);
+    if (col) vars.push(`--med-${k}: ${col}; --med-${k}-text: ${col};`);
+  }
+  return vars.length ? ` style="${esc(vars.join(" "))}"` : "";
+};
+
+/** Conversions pour la roue de couleurs de l'éditeur (teinte 0-360, saturation et luminosité 0-1). */
+const hsvToHex = (h, sat, val) => {
+  const f = (n) => {
+    const k = (n + h / 60) % 6;
+    return Math.round(255 * (val - val * sat * Math.max(0, Math.min(k, 4 - k, 1))));
+  };
+  return "#" + [f(5), f(3), f(1)].map((x) => x.toString(16).padStart(2, "0")).join("");
+};
+const hexToHsv = (hex) => {
+  let m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m && /^#?([0-9a-f]{3})$/i.test(hex || "")) m = [0, hex.replace("#", "").split("").map((x) => x + x).join("")];
+  if (!m) return null;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
+};
+/** "#1e88e5", [r, g, b] ou "rgb(...)" -> "#rrggbb" (pour la roue), sinon null */
+const toHex = (value) => {
+  const col = cssColor(value);
+  if (!col) return null;
+  if (/^#[0-9a-f]{6}$/i.test(col)) return col.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(col)) return ("#" + col.slice(1).split("").map((x) => x + x).join("")).toLowerCase();
+  const m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i.exec(col);
+  return m ? "#" + m.slice(1, 4).map((x) => Math.min(255, Number(x)).toString(16).padStart(2, "0")).join("") : null;
+};
+
 /** Le capteur des jours Tempo restants porte l'un de ces deux noms selon l'installation :
  *  celui de la configuration d'abord, puis les deux noms connus. */
 const TEMPO_INFO_IDS = (configured) =>
@@ -187,6 +239,12 @@ const DEFAULTS = {
   show_tempo: true,
   show_week: false,
 };
+
+/** Couleurs HC / HP réglables (éditeur visuel : roue de couleurs) */
+const HC_HP_COLORS = [
+  { key: "hc_color", label: "Couleur des heures creuses (HC)", def: "#4a7bd8" },
+  { key: "hp_color", label: "Couleur des heures pleines (HP)", def: "#d27333" },
+];
 
 class ContentCardLinkyNew extends HTMLElement {
   static getConfigElement() {
@@ -285,7 +343,7 @@ class ContentCardLinkyNew extends HTMLElement {
 
     const pdl = (c.entity.match(/linky_(\d+)_/) || [])[1];
 
-    this.shadowRoot.innerHTML = `${STYLE}<ha-card class="${mode}">
+    this.shadowRoot.innerHTML = `${STYLE}<ha-card class="${mode}"${hcHpStyle(c)}>
       ${this._header(pdl)}
       ${this._hero(all[0], a, prices)}
       ${this._tiles(a, all)}
@@ -1045,7 +1103,7 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .bar { display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: var(--med-line); }
 .bar i { display: block; } .bar .hc { background: var(--med-hc); } .bar .hp { background: var(--med-hp); }
 .split-l { display: flex; justify-content: space-between; font-size: .78rem; margin-top: 6px; }
-.k-hc { color: #8fb0f0; } .k-hp { color: #eaa070; }
+.k-hc { color: var(--med-hc-text, #8fb0f0); } .k-hp { color: var(--med-hp-text, #eaa070); }
 
 .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 10px 12px 0; }
 @container (min-width: 620px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
@@ -1117,8 +1175,8 @@ ha-card.th-v2.light {
   --med-green: #4c8a0b; --med-blue: #1673b8; --med-up: #c2560f; --med-down: #1d8a4b;
   box-shadow: 0 1px 3px rgba(26, 36, 52, .08);
 }
-ha-card.light .k-hc { color: #2f5fb8; }
-ha-card.light .k-hp { color: #b35619; }
+ha-card.light .k-hc { color: var(--med-hc-text, #2f5fb8); }
+ha-card.light .k-hp { color: var(--med-hp-text, #b35619); }
 ha-card.light .t-white .dot, ha-card.light .tag.t-white { box-shadow: inset 0 0 0 1px #aab3c0; }
 ha-card.light .chart rect.sel { fill: rgba(0, 0, 0, .05); }
 ha-card.light .tag.t-white { color: #1f2937; }
@@ -1224,7 +1282,32 @@ const PROD_LABELS = {
 };
 
 /** Éditeur visuel commun aux deux cartes : seuls le schéma, les libellés et les valeurs par défaut changent. */
-function makeEditor(schema, labels, defaults) {
+/** Roue de couleurs de l'éditeur, comme celle des lumières de Home Assistant :
+ *  teinte autour du cercle, couleur plus pâle vers le centre, curseur de luminosité,
+ *  champ du code couleur et retour à la couleur par défaut. */
+const WHEEL_STYLE = `<style>
+.med-colors { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 16px; }
+.med-color { border: 1px solid var(--divider-color, #e0e0e0); border-radius: 12px; padding: 12px; }
+.med-color-t { font-weight: 500; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.med-color-t i { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--divider-color, #ccc); flex: none; }
+.med-wheel { position: relative; width: 180px; max-width: 100%; aspect-ratio: 1; margin: 0 auto; border-radius: 50%;
+  touch-action: none; cursor: crosshair;
+  background: radial-gradient(circle closest-side, #fff, rgba(255, 255, 255, 0)),
+    conic-gradient(from 90deg, red, yellow, lime, cyan, blue, magenta, red); }
+.med-wheel .shade { position: absolute; inset: 0; border-radius: 50%; background: #000; pointer-events: none; }
+.med-wheel .dot { position: absolute; width: 18px; height: 18px; margin: -11px 0 0 -11px; border-radius: 50%;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .5), 0 1px 4px rgba(0, 0, 0, .4); pointer-events: none; }
+.med-color label { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .9rem; }
+.med-color input[type=range] { flex: 1; accent-color: var(--primary-color, #03a9f4); }
+.med-color-r { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.med-color-r input[type=text] { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border-radius: 6px;
+  border: 1px solid var(--divider-color, #ccc); background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); }
+.med-color-r button { font: inherit; font-size: .85rem; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--divider-color, #ccc); background: transparent; color: var(--primary-color, #03a9f4); }
+.med-color small { display: block; margin-top: 6px; color: var(--secondary-text-color, #666); }
+</style>`;
+
+function makeEditor(schema, labels, defaults, colors = []) {
   const hasDays = schema.some((s) => s.name === "days");
   return class extends HTMLElement {
     setConfig(config) {
@@ -1246,6 +1329,11 @@ function makeEditor(schema, labels, defaults) {
         this._form.addEventListener("value-changed", (ev) => {
           const v = { ...ev.detail.value };
           if (hasDays && v.days !== undefined) v.days = Number(v.days);
+          // Les couleurs se règlent avec les roues, hors du formulaire : garder la valeur en cours
+          for (const c of colors) {
+            if (this._config[c.key] !== undefined) v[c.key] = this._config[c.key];
+            else delete v[c.key];
+          }
           this._config = v;
           this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: v }, bubbles: true, composed: true }));
         });
@@ -1256,11 +1344,101 @@ function makeEditor(schema, labels, defaults) {
       this._form.data = hasDays
         ? { ...defaults, ...this._config, days: String(this._config.days || defaults.days) }
         : { ...defaults, ...this._config };
+      if (colors.length) this._drawColors();
+    }
+
+    _emit() {
+      this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
+    }
+
+    /** Enregistre une couleur (null : retour à la couleur par défaut, l'option disparaît du YAML). */
+    _setColor(key, hex) {
+      const v = { ...this._config };
+      if (hex) v[key] = hex;
+      else delete v[key];
+      this._config = v;
+      this._paintColor(key);
+      this._emit();
+    }
+
+    _drawColors() {
+      if (!this._colors) {
+        this._colors = document.createElement("div");
+        this._colors.innerHTML = WHEEL_STYLE + `<div class="med-colors">${colors.map((c) => `
+          <div class="med-color" data-key="${c.key}">
+            <div class="med-color-t"><i></i>${esc(c.label)}</div>
+            <div class="med-wheel"><div class="shade"></div><div class="dot"></div></div>
+            <label>Luminosité <input type="range" min="10" max="100" step="1"></label>
+            <div class="med-color-r"><input type="text" spellcheck="false" placeholder="${c.def}" aria-label="Code couleur">
+              <button type="button">Couleur par défaut</button></div>
+            <small>Par défaut : ${c.def}</small>
+          </div>`).join("")}</div>`;
+        this.appendChild(this._colors);
+        for (const c of colors) this._bindColor(c);
+      }
+      for (const c of colors) this._paintColor(c.key);
+    }
+
+    _bindColor(c) {
+      const box = this._colors.querySelector(`[data-key="${c.key}"]`);
+      const wheel = box.querySelector(".med-wheel");
+      const range = box.querySelector("input[type=range]");
+      const text = box.querySelector("input[type=text]");
+      const current = () => hexToHsv(toHex(this._config[c.key]) || c.def);
+      const pick = (ev) => {
+        const r = wheel.getBoundingClientRect();
+        const dx = ev.clientX - (r.left + r.width / 2), dy = ev.clientY - (r.top + r.height / 2);
+        const h = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+        const sat = Math.min(1, Math.hypot(dx, dy) / (r.width / 2));
+        this._setColor(c.key, hsvToHex(h, sat, current().v || 1));
+      };
+      wheel.addEventListener("pointerdown", (ev) => {
+        wheel.setPointerCapture(ev.pointerId);
+        this._dragging = c.key;
+        pick(ev);
+      });
+      wheel.addEventListener("pointermove", (ev) => { if (this._dragging === c.key) pick(ev); });
+      const stop = () => { this._dragging = null; };
+      wheel.addEventListener("pointerup", stop);
+      wheel.addEventListener("pointercancel", stop);
+      range.addEventListener("input", () => {
+        const { h, s } = current();
+        this._setColor(c.key, hsvToHex(h, s, Number(range.value) / 100));
+      });
+      text.addEventListener("change", () => {
+        const v = text.value.trim();
+        if (!v) return this._setColor(c.key, null);
+        const hex = toHex(v.startsWith("#") ? v : `#${v}`) || toHex(v);
+        if (hex) this._setColor(c.key, hex);
+        else this._paintColor(c.key);
+      });
+      box.querySelector("button").addEventListener("click", () => this._setColor(c.key, null));
+    }
+
+    _paintColor(key) {
+      const c = colors.find((x) => x.key === key);
+      const box = this._colors?.querySelector(`[data-key="${key}"]`);
+      if (!c || !box) return;
+      const chosen = toHex(this._config[key]);
+      const hex = chosen || c.def;
+      const { h, s, v } = hexToHsv(hex);
+      const dot = box.querySelector(".dot");
+      const rad = (h * Math.PI) / 180;
+      dot.style.left = `${50 + 50 * s * Math.cos(rad)}%`;
+      dot.style.top = `${50 + 50 * s * Math.sin(rad)}%`;
+      dot.style.background = hex;
+      box.querySelector(".shade").style.opacity = String(1 - v);
+      box.querySelector(".med-color-t i").style.background = hex;
+      const range = box.querySelector("input[type=range]");
+      if (document.activeElement !== range && this._dragging !== key) range.value = String(Math.round(v * 100));
+      const text = box.querySelector("input[type=text]");
+      const raw = this._config[key];
+      if (document.activeElement !== text) text.value = raw === undefined ? "" : typeof raw === "string" ? raw : chosen || "";
     }
   };
 }
 
-const ContentCardLinkyNewEditor = makeEditor(SCHEMA, LABELS, DEFAULTS);
+const ContentCardLinkyNewEditor = makeEditor(SCHEMA, LABELS, DEFAULTS, HC_HP_COLORS);
 const ContentCardLinkyNewProductionEditor = makeEditor(PROD_SCHEMA, PROD_LABELS, PROD_DEFAULTS);
 
 const TEMPO_SCHEMA = [
