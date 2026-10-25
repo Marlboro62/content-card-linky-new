@@ -182,7 +182,9 @@ consumption_entity: sensor.linky_<pdl>_consumption
 
 ## À savoir
 
-- **Coût estimé** : calculé par la carte (HC et HP du jour multipliés par le prix Tempo de la couleur du jour), hors abonnement. Les heures creuses de 0 h à 6 h appartiennent en réalité au jour Tempo de la veille : l'estimation peut donc légèrement différer de la facture.
+- **Coût estimé**, hors abonnement :
+  - **offre avec prix HC / HP ou Base** (Zen Fixe, Tarif Bleu…) : coût calculé par MyElectricalData avec l'offre choisie sur le PDL (attribut `dailyweek_cost`). Pour un prix différent de la grille actuelle (contrat souscrit plus tôt), choisir la bonne grille dans MyElectricalData, case « Afficher les offres obsolètes » ;
+  - **Tempo** : calculé par la carte (HC et HP du jour multipliés par le prix Tempo de la couleur du jour). Les heures creuses de 0 h à 6 h appartiennent en réalité au jour Tempo de la veille : l'estimation peut donc légèrement différer de la facture.
 - **Jours Tempo restants** : calculés à partir du quota et des jours utilisés.
 - **Cumuls annuels** : calculés par MyElectricalData en année civile.
 

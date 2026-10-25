@@ -18,7 +18,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.6.5";
+const CARD_VERSION = "0.6.6";
 
 /* ---------------------------------------------------------------- données */
 
@@ -64,6 +64,8 @@ const MED = {
     const mpTime = MED.list(attr.dailyweek_MP_time, "str");
     const mpOver = MED.list(attr.dailyweek_MP_over, "bool");
     const tempo = MED.list(attr.dailyweek_Tempo, "str");
+    // Coût du jour calculé par MyElectricalData avec l'offre choisie sur le PDL (-1 : pas de prix HC/HP, ex. Tempo)
+    const cost = MED.list(attr.dailyweek_cost);
     return dates.map((d, i) => {
       const h = hc[i] ?? null;
       const p = hp[i] ?? null;
@@ -78,6 +80,7 @@ const MED = {
         mpTime: MED.date(mpTime[i]),
         mpOver: mpOver[i] === true,
         tempo: tempo[i] ? tempo[i].toLowerCase() : null,
+        offerCost: cost[i] ?? null,
       };
     });
   },
@@ -350,11 +353,15 @@ class ContentCardLinkyNew extends HTMLElement {
     const all = MED.days(a);
     const prices = c.show_cost ? this._prices() : null;
     const hpPct = MED.num(a.peak_offpeak_percent);
+    // Offre avec prix HC/HP (Base, HC/HP, Zen Fixe…) : coûts de MyElectricalData, au prix de cette offre.
+    // Sinon (Tempo) : calcul de la carte avec les prix Tempo du jour.
+    const offerPriced = c.show_cost && all.some((d) => d.offerCost !== null);
     all.forEach((d) => {
       d.est = d.hc === null || d.hp === null ? MED.estimate(d, hpPct) : null;
-      d.cost = MED.cost(d, prices);
-      d.costEst = d.cost === null && d.est ? MED.cost({ ...d, ...d.est }, prices) : null;
+      d.cost = offerPriced ? d.offerCost : MED.cost(d, prices);
+      d.costEst = !offerPriced && d.cost === null && d.est ? MED.cost({ ...d, ...d.est }, prices) : null;
     });
+    this._offerPriced = offerPriced;
 
     const shown = all.slice(0, Math.max(1, Math.min(c.days, all.length)));
     if (this._selected >= shown.length) this._selected = 0;
@@ -427,7 +434,7 @@ class ContentCardLinkyNew extends HTMLElement {
             ? `<div class="cost">${euro(day.cost)}</div><div class="cost-l">coût de la journée</div>`
             : day.costEst !== null
               ? `<div class="cost est">≈ ${euro(day.costEst)}</div><div class="cost-l">coût estimé, en attendant le détail HC/HP</div>`
-              : `<div class="cost none">—</div><div class="cost-l">${!prices ? "prix Tempo introuvables" : day.hc === null || day.hp === null ? "coût disponible avec le détail HC/HP" : "couleur Tempo du jour inconnue"}</div>`
+              : `<div class="cost none">—</div><div class="cost-l">${this._offerPriced || (prices && (day.hc === null || day.hp === null)) ? "coût disponible avec le détail HC/HP" : !prices ? "prix Tempo introuvables" : "couleur Tempo du jour inconnue"}</div>`
         }
         ${day.mp !== null ? `<div class="hero-p">Pic ${fmt(day.mp, 2)} kVA${day.mpTime ? ` à ${day.mpTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}</div>` : ""}
       </div>
@@ -639,7 +646,11 @@ class ContentCardLinkyNew extends HTMLElement {
     const last = all.find((d) => d.total !== null && d.date);
     const bits = [];
     if (last) bits.push(`Données Enedis jusqu'au ${last.date.toLocaleDateString("fr-FR")}`);
-    if (this._config.show_cost) bits.push(prices ? "coûts estimés hors abonnement, au prix Tempo du jour" : "prix Tempo introuvables, coûts masqués");
+    if (this._config.show_cost) {
+      bits.push(this._offerPriced
+        ? "coûts estimés hors abonnement, au prix de l'offre choisie dans MyElectricalData"
+        : prices ? "coûts estimés hors abonnement, au prix Tempo du jour" : "prix Tempo introuvables, coûts masqués");
+    }
     if (all.some((d) => d.est) && hpPct !== null) bits.push(`barres claires : répartition HC/HP estimée (${fmt(hpPct, 1)} % HP)`);
     return `<footer>${bits.join(", ")}.</footer>`;
   }
