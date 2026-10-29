@@ -34,7 +34,7 @@ Cartes Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalDat
 - **Carte Enedis Linky New · Production** (depuis la 0.3.0) : production, ou bilan des échanges avec le réseau (injecté / soutiré), pour les installations solaires ;
 - **Carte Enedis Linky New · Tempo** (depuis la 0.5.0) : mini-carte sur une ligne, couleur Tempo du jour et du lendemain et jours restants.
 
-![Carte Enedis Linky New](images/apercu.png)
+![Carte Enedis Linky New](https://raw.githubusercontent.com/Marlboro62/content-card-linky-new/main/images/apercu.png)
 
 🎮 **[Essayer la démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html)** : les vraies cartes (consommation, production, bilan, mini Tempo) avec des données simulées, sans installer Home Assistant.
 
@@ -181,7 +181,7 @@ L'export Home Assistant de MyElectricalData crée le capteur `sensor.linky_<pdl>
 
 **Mode `production`** : production de la veille et son évolution, pic d'injection, mois en cours (avec projection), mois dernier, année, meilleur jour, graphique des 7, 14 ou 31 derniers jours, et revenu estimé si vous indiquez un prix de rachat.
 
-<p align="center"><img src="images/production-reelle.jpg" alt="Carte Production avec de vraies données" width="360"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Marlboro62/content-card-linky-new/main/images/production-reelle.jpg" alt="Carte Production avec de vraies données" width="360"></p>
 <p align="center"><sub>Carte Production avec de vraies données, capture partagée par <a href="https://github.com/Userfreedu42">@Userfreedu42</a> (merci !).</sub></p>
 
 ```yaml
