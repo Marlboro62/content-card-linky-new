@@ -123,6 +123,7 @@ theme: v2
 | `price_prefix` | `sensor.edf_tempo_price_` | Préfixe des capteurs de prix Tempo (`sensor.myelectricaldata_tempo_price_` essayé automatiquement si les premiers n'existent pas) |
 | `hc_color` | `#4a7bd8` (bleu) | Couleur des heures creuses : graphique, barre HC/HP, légende et détail du jour. Code `"#1e88e5"` (entre guillemets en YAML), `[r, g, b]`, `rgb(...)` ou nom de couleur CSS |
 | `hp_color` | `#d27333` (orange) | Couleur des heures pleines, mêmes formats que `hc_color` |
+| `base_color` | `hc_color` (bleu) | Couleur des barres du graphique pour un **contrat Base** (sans heures creuses / pleines), mêmes formats que `hc_color` |
 | `hc_blue_color`, `hp_blue_color` | `hc_color`, `hp_color` | Couleurs HC et HP des **jours bleus** (contrat Tempo) |
 | `hc_white_color`, `hp_white_color` | `hc_color`, `hp_color` | Couleurs HC et HP des **jours blancs** |
 | `hc_red_color`, `hp_red_color` | `hc_color`, `hp_color` | Couleurs HC et HP des **jours rouges** |
@@ -133,6 +134,8 @@ Dans l'éditeur visuel, chaque couleur se choisit sur une **roue de couleurs** (
 
 
 **Contrat Tempo : six couleurs.** Dans l'éditeur, la case **Couleurs selon la couleur Tempo du jour** ajoute six roues : HC et HP des jours bleus, blancs et rouges. Chaque barre du graphique et la barre HC/HP du jour prennent les couleurs de leur jour Tempo, et la légende affiche une paire HC / HP par couleur présente sur la période. Une couleur non réglée reprend `hc_color` / `hp_color` ; décocher la case retire les six options.
+
+**Contrat Base.** Sans heures creuses ni pleines, la carte le détecte seule : les barres du graphique prennent `base_color` (bleu par défaut) au lieu du gris des jours en attente, la légende affiche « Base » et la carte n'annonce plus de détail HC/HP.
 
 ```yaml
 type: custom:content-card-linky-new

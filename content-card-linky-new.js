@@ -18,7 +18,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.6.7-beta";
+const CARD_VERSION = "0.6.8-beta";
 
 /* ---------------------------------------------------------------- données */
 
@@ -184,6 +184,8 @@ const hcHpStyle = (c) => {
       if (col) vars.push(`${v}: ${col}; ${v}-text: color-mix(in srgb, ${col} 65%, var(--med-text));`);
     }
   }
+  const base = cssColor(c.base_color);
+  if (base) vars.push(`--med-base: ${base};`);
   return vars.length ? ` style="${esc(vars.join(" "))}"` : "";
 };
 
@@ -274,6 +276,7 @@ const DEFAULTS = {
 const HC_HP_COLORS = [
   { key: "hc_color", label: "Couleur des heures creuses (HC)", def: "#4a7bd8" },
   { key: "hp_color", label: "Couleur des heures pleines (HP)", def: "#d27333" },
+  { key: "base_color", label: "Couleur des barres en Base (sans HC/HP)", def: "#4a7bd8" },
   // Couleurs selon la couleur Tempo du jour : sans réglage, celles des heures creuses / pleines ci-dessus
   ...["blue", "white", "red"].flatMap((t) =>
     ["hc", "hp"].map((k) => ({
@@ -377,8 +380,12 @@ class ContentCardLinkyNew extends HTMLElement {
     // 3. sinon (Tempo) : calcul de la carte avec les prix Tempo du jour.
     const manual = c.show_cost ? manualPrices(c) : null;
     const offerPriced = !manual && c.show_cost && all.some((d) => d.offerCost !== null);
+    // Contrat Base : aucun jour avec un détail HC/HP. Les barres prennent base_color au lieu du gris
+    // des jours en attente, et rien n'annonce un détail HC/HP qui ne viendra jamais.
+    const base = all.some((d) => d.total !== null) && !all.some((d) => d.hc !== null && d.hp !== null);
+    this._base = base;
     all.forEach((d) => {
-      d.est = d.hc === null || d.hp === null ? MED.estimate(d, hpPct) : null;
+      d.est = !base && (d.hc === null || d.hp === null) ? MED.estimate(d, hpPct) : null;
       if (manual) {
         d.cost = manualCost(d, manual);
         d.costEst = d.cost === null && d.est ? manualCost({ ...d, ...d.est }, manual) : null;
@@ -472,7 +479,7 @@ class ContentCardLinkyNew extends HTMLElement {
             ? `<div class="cost">${euro(day.cost)}</div><div class="cost-l">coût de la journée${day.sub ? `, dont abonnement ${euro(day.sub)}` : ""}</div>`
             : day.costEst !== null
               ? `<div class="cost est">≈ ${euro(day.costEst)}</div><div class="cost-l">coût estimé, en attendant le détail HC/HP</div>`
-              : `<div class="cost none">—</div><div class="cost-l">${this._manualPriced || this._offerPriced || (prices && (day.hc === null || day.hp === null)) ? "coût disponible avec le détail HC/HP" : !prices ? "prix Tempo introuvables" : "couleur Tempo du jour inconnue"}</div>`
+              : `<div class="cost none">—</div><div class="cost-l">${this._base ? "coût indisponible pour ce jour" : this._manualPriced || this._offerPriced || (prices && (day.hc === null || day.hp === null)) ? "coût disponible avec le détail HC/HP" : !prices ? "prix Tempo introuvables" : "couleur Tempo du jour inconnue"}</div>`
         }
         ${day.mp !== null ? `<div class="hero-p">Pic ${fmt(day.mp, 2)} kVA${day.mpTime ? ` à ${day.mpTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}</div>` : ""}
       </div>
@@ -480,7 +487,7 @@ class ContentCardLinkyNew extends HTMLElement {
         split
           ? `<div class="split${TEMPO[day.tempo] ? ` tb-${day.tempo}` : ""}"><div class="bar"><i class="hc" style="width:${hcPct}%"></i><i class="hp" style="width:${100 - hcPct}%"></i></div>
              <div class="split-l"><span class="k-hc">Heures creuses ${fmt(day.hc, 2)} kWh</span><span class="k-hp">Heures pleines ${fmt(day.hp, 2)} kWh</span></div></div>`
-          : `<div class="split wait">Détail heures creuses / heures pleines pas encore publié par Enedis</div>`
+          : this._base ? "" : `<div class="split wait">Détail heures creuses / heures pleines pas encore publié par Enedis</div>`
       }
     </section>`;
   }
@@ -559,8 +566,15 @@ class ContentCardLinkyNew extends HTMLElement {
       ${this._tile(`${month(0)} en cours`, fmt(cm, 0), "kWh", cmEvo, cmNote, cmEvo !== null ? " sur projection" : "")}
       ${this._tile(month(-1), fmt(lm, 0), "kWh", a.monthly_evolution, lmLy !== null ? `${cap(month(-1, -1))} : ${fmt(lmLy, 0)} kWh` : "")}
       ${this._tile(`Année ${now.getFullYear()}`, fmt(cy, 0), "kWh", a.yearly_evolution, cyLy !== null ? `À date en ${now.getFullYear() - 1} : ${fmt(cyLy, 0)} kWh` : "")}
-      ${this._tile("Part heures pleines", fmt(hp, 1), "%", null, "de la consommation")}
+      ${this._base ? this._baseAvgTile(all) : this._tile("Part heures pleines", fmt(hp, 1), "%", null, "de la consommation")}
     </section>`;
+  }
+
+  /** Contrat Base : la part d'heures pleines n'a pas de sens, la tuile donne la moyenne par jour sur 30 jours. */
+  _baseAvgTile(all) {
+    const last = all.filter((d) => d.total !== null).slice(0, 30);
+    const avg = last.length ? last.reduce((t, d) => t + d.total, 0) / last.length : null;
+    return this._tile("Moyenne par jour", fmt(avg, 2), "kWh", null, last.length ? `sur les ${last.length} derniers jours` : "");
   }
 
   /* ---------------------------------------------------------- graphique */
@@ -591,7 +605,7 @@ class ContentCardLinkyNew extends HTMLElement {
                   <rect class="hp${tb}" x="${x}" y="${H - hHc - hHp}" width="${w}" height="${hHp}"/></g>`;
         } else if (d.total !== null) {
           const h = (d.total / max) * H;
-          body = `<rect class="partial" x="${x}" y="${H - h}" width="${w}" height="${h}"/>`;
+          body = `<rect class="${this._base ? "base" : "partial"}" x="${x}" y="${H - h}" width="${w}" height="${h}"/>`;
         }
         return `${sel}${body}<rect class="hit" data-i="${d.i}" x="${k * slot}" y="0" width="${slot}" height="${H}"/>`;
       })
@@ -607,8 +621,8 @@ class ContentCardLinkyNew extends HTMLElement {
       })
       .join("");
     // Couleurs Tempo réglées : une paire HC / HP par couleur Tempo présente sur la période
-    let legend = '<i class="k-hc"></i>HC<i class="k-hp"></i>HP';
-    if (hasTempoColors(this._config)) {
+    let legend = this._base ? '<i class="k-base"></i>Base' : '<i class="k-hc"></i>HC<i class="k-hp"></i>HP';
+    if (!this._base && hasTempoColors(this._config)) {
       const present = TEMPO_KEYS.filter((t) => chrono.some((d) => d.tempo === t));
       const others = chrono.some((d) => !TEMPO[d.tempo] && (d.hc !== null || d.est));
       legend = `<span class="legend-t">HC / HP</span>${present.map((t) => `<i class="k-hc tb-${t}"></i><i class="k-hp tb-${t} pair"></i>${TEMPO[t].label}`).join("")}${
@@ -628,7 +642,7 @@ class ContentCardLinkyNew extends HTMLElement {
     const t = this._config.show_tempo !== false ? TEMPO[d.tempo] : null;
     const parts = [`<b>${fmt(d.total, 2)} kWh</b>`];
     if (d.hc !== null && d.hp !== null) parts.push(`HC ${fmt(d.hc, 2)}`, `HP ${fmt(d.hp, 2)}`);
-    else parts.push("détail HC/HP en attente");
+    else if (!this._base) parts.push("détail HC/HP en attente");
     if (d.cost !== null) parts.push(euro(d.cost));
     else if (d.costEst !== null) parts.push(`≈ ${euro(d.costEst)}`);
     const peak =
@@ -1215,6 +1229,8 @@ ${TEMPO_CSS}
 .chart svg { width: 100%; height: 130px; display: block; }
 .chart rect.hc { fill: var(--med-hc); } .chart rect.hp { fill: var(--med-hp); }
 .chart rect.partial { fill: var(--med-muted); opacity: .35; }
+.chart rect.base { fill: var(--med-base, var(--med-hc)); }
+.legend .k-base { background: var(--med-base, var(--med-hc)); }
 .chart g.est { opacity: .45; }
 .chart rect.sel { fill: rgba(255,255,255,.06); }
 .chart rect.hit { fill: transparent; cursor: pointer; }
