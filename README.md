@@ -34,7 +34,7 @@ Cartes Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalDat
 - **Carte Enedis Linky New · Production** (depuis la 0.3.0) : production, ou bilan des échanges avec le réseau (injecté / soutiré), pour les installations solaires ;
 - **Carte Enedis Linky New · Tempo** (depuis la 0.5.0) : mini-carte sur une ligne, couleur Tempo du jour et du lendemain et jours restants.
 
-<img src="https://raw.githubusercontent.com/Marlboro62/content-card-linky-new/main/images/apercu.png" alt="Carte Enedis Linky New" width="300">
+<img width="1863" height="876" alt="Capture d&#39;écran 2026-11-02 140514" src="https://github.com/user-attachments/assets/8e26df0d-78ce-4b8f-b143-132bb1ca9489" />
 
 🎮 **[Essayer la démo en ligne](https://marlboro62.github.io/content-card-linky-new/docs/demo.html)** : les vraies cartes (consommation, production, bilan, mini Tempo) avec des données simulées, sans installer Home Assistant.
 
