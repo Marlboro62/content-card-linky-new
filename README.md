@@ -40,6 +40,18 @@ Cartes Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalDat
 
 Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de MyElectricalData new. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
+## Nouveautés de la 0.8.0
+
+**Nouvelles options** (demandes de WarC0zes, issues #10 et #11)
+
+- `font_size` : taille du texte de la carte, de 70 à 150 %.
+- `show_power` : masquer le bloc de la puissance maximale, pour une carte plus courte.
+- `tiles_horizontal` : avec `show_week`, les six tuiles en 3 colonnes de 2, de la plus courte période à la plus longue (semaine, mois, année), pour une carte moins haute.
+
+**Corrections**
+
+- Aucune correction de fonctionnement dans cette version ; le README décrit maintenant toutes les options de la carte.
+
 ## 🧩 Fait partie de l'écosystème MyElectricalData new
 
 Ces projets sont **non officiels**, maintenus par Marlboro62, sans lien avec l'équipe MyElectricalData. Ils s'appuient sur le [mode client de MyElectricalData new](https://github.com/MyElectricalData/myelectricaldata_new), relié à la passerelle [www.v2.myelectricaldata.fr](https://www.v2.myelectricaldata.fr).
