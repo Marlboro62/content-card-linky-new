@@ -116,6 +116,9 @@ theme: v2
 | `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
 | `show_tempo` | `true` | Afficher Tempo : couleurs d'aujourd'hui et de demain, jours restants et pastilles de couleur sous le graphique. Mettre `false` pour masquer tout l'affichage Tempo (le calcul des coûts n'est pas modifié) |
 | `show_week` | `false` | Ajouter deux tuiles : **semaine en cours** (du lundi à hier, comparée à la même période de la semaine dernière) et **semaine dernière** (lundi à dimanche) |
+| `tiles_horizontal` | `false` | Avec `show_week` : tuiles en **3 colonnes de 2**, semaine, mois et année (en cours en haut, précédente en bas), pour une carte moins haute |
+| `show_power` | `true` | Afficher le bloc de la **puissance maximale** sur la période du graphique |
+| `font_size` | `100` | Taille du texte de la carte, en % (70 à 150) |
 | `tempo_today` | `sensor.rte_tempo_today` | Couleur Tempo du jour |
 | `tempo_tomorrow` | `sensor.rte_tempo_tomorrow` | Couleur Tempo du lendemain |
 | `tempo_info` | `sensor.edf_tempo_info` | Jours Tempo restants. Selon l'installation, l'entité peut s'appeler `sensor.edf_tempo_tempo_info` : la carte essaie les deux noms si celui-ci n'existe pas |

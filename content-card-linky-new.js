@@ -18,7 +18,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.8.0-beta.3";
+const CARD_VERSION = "0.8.0-beta.4";
 
 /* ---------------------------------------------------------------- données */
 
@@ -571,9 +571,10 @@ class ContentCardLinkyNew extends HTMLElement {
     const lastMonth = this._tile(month(-1), fmt(lm, 0), "kWh", a.monthly_evolution, lmLy !== null ? `${cap(month(-1, -1))} : ${fmt(lmLy, 0)} kWh` : "");
     const year = this._tile(`Année ${now.getFullYear()}`, fmt(cy, 0), "kWh", a.yearly_evolution, cyLy !== null ? `À date en ${now.getFullYear() - 1} : ${fmt(cyLy, 0)} kWh` : "");
     const share = this._base ? this._baseAvgTile(all) : this._tile("Part heures pleines", fmt(hp, 1), "%", null, "de la consommation");
-    // Disposition horizontale (avec la semaine) : 3 colonnes de 2 cases, mois | semaine | année
+    // Disposition horizontale (avec la semaine) : 3 colonnes de 2 cases, de la plus courte période à la plus longue,
+    // semaine | mois | année (en cours en haut, précédente en bas)
     if (week && this._config.tiles_horizontal) {
-      return `<section class="tiles six h3">${curMonth}${lastMonth}${week}${year}${share}</section>`;
+      return `<section class="tiles six h3">${week}${curMonth}${lastMonth}${year}${share}</section>`;
     }
     return `<section class="tiles${week ? " six" : ""}">${week}${curMonth}${lastMonth}${year}${share}</section>`;
   }
