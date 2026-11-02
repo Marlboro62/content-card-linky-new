@@ -18,7 +18,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.7.0";
+const CARD_VERSION = "0.8.0-beta.2";
 
 /* ---------------------------------------------------------------- données */
 
@@ -186,6 +186,9 @@ const hcHpStyle = (c) => {
   }
   const base = cssColor(c.base_color);
   if (base) vars.push(`--med-base: ${base};`);
+  // Taille de la police : facteur appliqué à toutes les tailles en rem de la carte (100 % = taille d'origine)
+  const fs = Number(c.font_size);
+  if (Number.isFinite(fs) && fs >= 50 && fs <= 200 && fs !== 100) vars.push(`--fs: ${fs / 100};`);
   return vars.length ? ` style="${esc(vars.join(" "))}"` : "";
 };
 
@@ -270,6 +273,9 @@ const DEFAULTS = {
   show_pdl: true,
   show_tempo: true,
   show_week: false,
+  show_power: true,
+  tiles_horizontal: false,
+  font_size: 100,
 };
 
 /** Couleurs HC / HP réglables (éditeur visuel : roue de couleurs) */
@@ -419,7 +425,7 @@ class ContentCardLinkyNew extends HTMLElement {
       ${this._tiles(a, all)}
       ${this._chart(shown)}
       ${this._selected > 0 ? this._detail(shown[this._selected]) : ""}
-      ${this._power(shown)}
+      ${c.show_power !== false ? this._power(shown) : ""}
       ${this._ecowatt()}
       ${this._footer(all, prices, hpPct)}
     </ha-card>`;
@@ -561,13 +567,15 @@ class ContentCardLinkyNew extends HTMLElement {
       cmLy !== null ? `${cap(month(0, -1))} : ${fmt(cmLy, 0)} kWh` : "",
     ].filter(Boolean).join("<br>");
     const week = this._config.show_week ? this._weekTiles(a, all) : "";
-    return `<section class="tiles${week ? " six" : ""}">
-      ${week}
-      ${this._tile(`${month(0)} en cours`, fmt(cm, 0), "kWh", cmEvo, cmNote, cmEvo !== null ? " sur projection" : "")}
-      ${this._tile(month(-1), fmt(lm, 0), "kWh", a.monthly_evolution, lmLy !== null ? `${cap(month(-1, -1))} : ${fmt(lmLy, 0)} kWh` : "")}
-      ${this._tile(`Année ${now.getFullYear()}`, fmt(cy, 0), "kWh", a.yearly_evolution, cyLy !== null ? `À date en ${now.getFullYear() - 1} : ${fmt(cyLy, 0)} kWh` : "")}
-      ${this._base ? this._baseAvgTile(all) : this._tile("Part heures pleines", fmt(hp, 1), "%", null, "de la consommation")}
-    </section>`;
+    const curMonth = this._tile(`${month(0)} en cours`, fmt(cm, 0), "kWh", cmEvo, cmNote, cmEvo !== null ? " sur projection" : "");
+    const lastMonth = this._tile(month(-1), fmt(lm, 0), "kWh", a.monthly_evolution, lmLy !== null ? `${cap(month(-1, -1))} : ${fmt(lmLy, 0)} kWh` : "");
+    const year = this._tile(`Année ${now.getFullYear()}`, fmt(cy, 0), "kWh", a.yearly_evolution, cyLy !== null ? `À date en ${now.getFullYear() - 1} : ${fmt(cyLy, 0)} kWh` : "");
+    const share = this._base ? this._baseAvgTile(all) : this._tile("Part heures pleines", fmt(hp, 1), "%", null, "de la consommation");
+    // Disposition horizontale (avec la semaine) : 3 colonnes de 2 cases, mois | semaine | année
+    if (week && this._config.tiles_horizontal) {
+      return `<section class="tiles six h3">${curMonth}${lastMonth}${week}${year}${share}</section>`;
+    }
+    return `<section class="tiles${week ? " six" : ""}">${week}${curMonth}${lastMonth}${year}${share}</section>`;
   }
 
   /** Contrat Base : la part d'heures pleines n'a pas de sens, la tuile donne la moyenne par jour sur 30 jours. */
@@ -1157,7 +1165,7 @@ const TEMPO_CSS = TEMPO_KEYS.flatMap((t) =>
 ha-card.light .split.tb-${t} .k-${k} { color: var(--med-${k}-${t}-text, var(--med-${k}-text, ${TEXT_DEFAULT[k][1]})); }`),
 ).join("");
 
-const STYLE = `<style>
+const STYLE_BASE = `<style>
 :host {
   --med-bg: #1a2434; --med-surface: #212d40; --med-line: #2f3d55;
   --med-text: #e7edf5; --med-muted: #8fa0b8;
@@ -1295,7 +1303,12 @@ ha-card.light .chart rect.sel { fill: rgba(0, 0, 0, .05); }
 ha-card.light .tag.t-white { color: #1f2937; }
 @media (max-width: 420px) { .hero-v { font-size: 2rem; } .tempo { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.tiles.h3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, auto); grid-auto-flow: column; }
+.tiles.h3 .tile { padding: 8px 10px; min-width: 0; }
+@container (max-width: 420px) { .tiles.h3 .tile-v { font-size: 1.1rem; } .tiles.h3 .tile-n { font-size: .66rem; } }
 </style>`;
+// Variable --fs (réglage « taille de la police ») : sans réglage elle vaut 1 et rien ne change.
+const STYLE = STYLE_BASE.replace(/(-?\d*\.?\d+)rem/g, "calc($1rem * var(--fs, 1))");
 
 /* ----------------------------------------------------------------- éditeur */
 
@@ -1338,6 +1351,9 @@ const SCHEMA = [
   { name: "show_pdl", selector: { boolean: {} } },
   { name: "show_tempo", selector: { boolean: {} } },
   { name: "show_week", selector: { boolean: {} } },
+  { name: "tiles_horizontal", selector: { boolean: {} } },
+  { name: "show_power", selector: { boolean: {} } },
+  { name: "font_size", selector: { number: { min: 70, max: 150, step: 5, mode: "slider", unit_of_measurement: "%" } } },
   { name: "tempo_today", selector: { entity: { domain: "sensor" } } },
   { name: "tempo_tomorrow", selector: { entity: { domain: "sensor" } } },
   { name: "tempo_info", selector: { entity: { domain: "sensor" } } },
@@ -1356,6 +1372,9 @@ const LABELS = {
   show_pdl: "Afficher le numéro de PDL",
   show_tempo: "Afficher Tempo (couleurs d'aujourd'hui et de demain, jours restants, pastilles du graphique)",
   show_week: "Afficher la semaine en cours et la semaine dernière",
+  tiles_horizontal: "Cases en 3 colonnes (avec la semaine)",
+  show_power: "Afficher la puissance maximale sur la période",
+  font_size: "Taille de la police (100 % = taille d'origine)",
   tempo_today: "Tempo aujourd'hui",
   tempo_tomorrow: "Tempo demain",
   tempo_info: "Tempo, jours restants",
