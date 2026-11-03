@@ -40,6 +40,12 @@ Cartes Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalDat
 
 Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de MyElectricalData new. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
+## Nouveautés de la 0.9.0 (bêta)
+
+**Nouvelle carte** (demande d'olivr2s, issue #12)
+
+- **Carte Gazpar** (`custom:content-card-linky-new-gazpar`) : consommation de gaz du compteur Gazpar de GRDF, dans le style de la carte Linky. Voir [Carte Gazpar](#carte-gazpar).
+
 ## Nouveautés de la 0.8.0
 
 **Nouvelles options** (demandes de WarC0zes, issues #10 et #11)
@@ -226,6 +232,38 @@ consumption_entity: sensor.linky_<pdl>_consumption
 | `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
 
 > ⚠️ **Ce que mesure Enedis** : le compteur Linky ne voit que les échanges avec le réseau. Avec un contrat de **vente du surplus**, la « production » est l'énergie **injectée** (le surplus), pas la production totale des panneaux ; avec la **vente totale**, c'est bien toute la production. L'énergie produite et consommée sur place (autoconsommation) n'est pas visible par Enedis : pour la mesurer, il faut un capteur côté onduleur. Le mode `bilan` montre donc le solde des échanges avec le réseau, pas votre autoconsommation.
+
+## Carte Gazpar
+
+Le même fichier fournit aussi une carte pour le **gaz**, `custom:content-card-linky-new-gazpar`, pour le compteur **Gazpar** de GRDF. Pas de ressource à ajouter.
+
+Elle lit le capteur de l'intégration [home-assistant-gazpar](https://github.com/ssenart/home-assistant-gazpar) (HACS), par défaut `sensor.gazpar`, avec ses relevés quotidiens, hebdomadaires, mensuels et annuels.
+
+- **Dernier relevé** : énergie en kWh, volume en m³, température, et son évolution par rapport au même jour de la semaine précédente.
+- **Tuiles** : mois en cours (avec projection et la même période l'an dernier), mois dernier (et son évolution sur un an), dernière semaine complète (et son évolution), année en cours.
+- **Graphique** des 7, 14 ou 31 derniers relevés, les jours estimés par GRDF en plus pâle ; un clic sur un jour donne son détail : kWh, m³, index du compteur, coefficient de conversion, température.
+- **Coût estimé** si vous indiquez le prix du kWh de gaz.
+
+<p align="center"><img src="https://raw.githubusercontent.com/Marlboro62/content-card-linky-new/main/images/gazpar-demo.png" alt="Carte Gazpar avec des données simulées" width="360"></p>
+<p align="center"><sub>Carte Gazpar, données simulées de la <a href="https://github.com/Marlboro62/content-card-linky-new/blob/main/docs/demo.html">démo</a>.</sub></p>
+
+```yaml
+type: custom:content-card-linky-new-gazpar
+entity: sensor.gazpar
+price: 0.105
+```
+
+| Option | Défaut | Description |
+|---|---|---|
+| `entity` | obligatoire | Capteur Gazpar, `sensor.gazpar` par défaut |
+| `title` | `Gazpar` | Titre affiché |
+| `days` | `14` | Historique du graphique : `7`, `14` ou `31` relevés |
+| `price` | aucun | Prix du kWh de gaz en €/kWh, pour estimer le coût (hors abonnement) |
+| `theme` | `v2` | `v2`, `auto` ou `ha`, comme la carte de consommation |
+| `show_pce` | `true` | Afficher le numéro de PCE sous le titre |
+| `font_size` | `100` | Taille du texte, de 70 à 150 % |
+
+> GRDF publie les relevés avec **un à trois jours de retard**. L'énergie est calculée par GRDF à partir du volume et du coefficient de conversion (pouvoir calorifique du gaz), qui varie un peu d'un jour à l'autre.
 
 ## À savoir
 

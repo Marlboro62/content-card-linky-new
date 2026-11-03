@@ -82,7 +82,7 @@
     <svg viewBox="0 0 32 32" aria-hidden="true"><path class="house" d="M4 14.5 16 4l12 10.5V27a1.5 1.5 0 0 1-1.5 1.5h-5M10.5 28.5h-5A1.5 1.5 0 0 1 4 27V14.5"/><path class="bolt" d="M17.5 9 11 18h4.5l-1.5 8 7-10h-4.6z"/></svg>
     <div>
       <h1>Carte Enedis Linky New <span class="badge" id="ver">démo</span></h1>
-      <p class="lead">Consommation, production, bilan et mini Tempo · données simulées, sans Home Assistant</p>
+      <p class="lead">Consommation, production, bilan, mini Tempo et gaz (Gazpar) · données simulées, sans Home Assistant</p>
     </div>
     <nav class="links">
       <a href="https://github.com/Marlboro62/content-card-linky-new">Dépôt GitHub</a>
@@ -94,7 +94,7 @@
     <aside class="panel" aria-label="Réglages de la démo">
       <h2>Carte</h2>
       <div class="ctl"><div class="seg" data-key="card">
-        <button data-v="conso">Consommation</button><button data-v="prod">Production</button><button data-v="bilan">Bilan réseau</button><button data-v="tempo">Mini Tempo</button></div></div>
+        <button data-v="conso">Consommation</button><button data-v="prod">Production</button><button data-v="bilan">Bilan réseau</button><button data-v="tempo">Mini Tempo</button><button data-v="gazpar">Gazpar</button></div></div>
       <h2 style="margin-top:20px">Affichage</h2>
       <div class="ctl"><div class="ctl-l">Thème de la page</div><div class="seg" data-key="page">
         <button data-v="dark">Sombre</button><button data-v="light">Clair</button></div></div>
@@ -102,7 +102,7 @@
         <button data-v="v2">MyElectricalData</button><button data-v="auto">MyElectricalData auto</button><button data-v="ha">Thème Home Assistant</button></div></div>
       <div class="ctl"><div class="ctl-l">Largeur</div><div class="seg" data-key="width">
         <button data-v="mobile">Téléphone</button><button data-v="large">Tablette / PC</button></div></div>
-      <div class="ctl" data-for="conso prod bilan"><div class="ctl-l">Historique (<code>days</code>)</div><div class="seg" data-key="days">
+      <div class="ctl" data-for="conso prod bilan gazpar"><div class="ctl-l">Historique (<code>days</code>)</div><div class="seg" data-key="days">
         <button data-v="7">7 jours</button><button data-v="14">14 jours</button><button data-v="31">31 jours</button></div></div>
       <div class="ctl" data-for="conso"><div class="ctl-l">Coûts estimés (<code>show_cost</code>)</div><div class="seg" data-key="cost">
         <button data-v="on">Affichés</button><button data-v="off">Masqués</button></div></div>
@@ -118,6 +118,8 @@
 
       <div class="ctl" data-for="prod"><div class="ctl-l">Prix de rachat (<code>sale_price</code>, exemple)</div><div class="seg" data-key="price">
         <button data-v="none">Non renseigné</button><button data-v="0.04">0,04 €/kWh</button><button data-v="0.13">0,13 €/kWh</button></div></div>
+      <div class="ctl" data-for="gazpar"><div class="ctl-l">Prix du kWh de gaz (<code>price</code>, exemple)</div><div class="seg" data-key="gprice">
+        <button data-v="none">Non renseigné</button><button data-v="0.105">0,105 €/kWh</button><button data-v="0.13">0,13 €/kWh</button></div></div>
       <div class="ctl" data-for="prod bilan"><div class="ctl-l">Météo simulée</div><div class="seg" data-key="sky">
         <button data-v="sun">Plutôt ensoleillé</button><button data-v="mixed">Variable</button><button data-v="grey">Plutôt gris</button></div></div>
 
@@ -170,10 +172,38 @@
   const PDL = "12345678901234"; // numéro fictif
   const ENTITY = `sensor.linky_${PDL}_consumption`;
   const PROD_ENTITY = `sensor.linky_${PDL}_production`;
+  const GAS_ENTITY = "sensor.gazpar";
+  /** Relevés Gazpar simulés (400 jours, du plus ancien au plus récent, comme l'intégration home-assistant-gazpar) */
+  function gazpar() {
+    const MOIS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+    const dd = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const daily = []; let index = 18000;
+    for (let i = 400; i >= 2; i--) { // données GRDF jusqu'à J-2
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const doy = (d - new Date(d.getFullYear(), 0, 1)) / 86400000;
+      const temp = 12 - 9 * Math.cos(((doy - 15) / 365) * 2 * Math.PI) + (Math.sin(i * 1.7) * 3);
+      const m3 = Math.max(0.4, (17 - temp) * 0.32 + Math.sin(i * 2.3) * 0.4 + (d.getDay() % 6 === 0 ? 0.6 : 0));
+      const f = 11.2 + Math.sin(i / 30) * 0.08;
+      daily.push({ time_period: dd(d), start_index_m3: Math.round(index), end_index_m3: Math.round(index + m3), volume_m3: round(m3, 2), energy_kwh: round(m3 * f, 1),
+        "converter_factor_kwh/m3": round(f, 3), temperature_degC: round(temp, 1), type: i === 3 ? "Estimé" : "Mesuré", timestamp: new Date().toISOString() });
+      index += m3;
+    }
+    const sum = (list) => ({ volume_m3: round(list.reduce((s, x) => s + x.volume_m3, 0), 1), energy_kwh: round(list.reduce((s, x) => s + x.energy_kwh, 0), 0) });
+    const groups = (key) => { const m = new Map(); for (const x of daily) { const k = key(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } return m; };
+    const parse = (t) => { const [a, b, c] = t.split("/").map(Number); return new Date(c, b - 1, a); };
+    const monthly = [...groups((x) => { const d = parse(x.time_period); return `${MOIS[d.getMonth()]} ${d.getFullYear()}`; })].map(([k, l]) => ({ time_period: k, ...sum(l) }));
+    const weekly = [...groups((x) => { const d = parse(x.time_period); const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return dd(mon); })]
+      .map(([k, l]) => { const mon = parse(k), sun = new Date(mon); sun.setDate(mon.getDate() + 6); return { time_period: `Du ${k} au ${dd(sun)}`, ...sum(l) }; });
+    const yearly = [...groups((x) => x.time_period.slice(6))].map(([k, l]) => ({ time_period: k, ...sum(l) }));
+    return { attribution: "Données GRDF", username: "demo@example.org", pce: "GI000000000000", unit_of_measurement: "kWh", friendly_name: "Gazpar",
+      icon: "mdi:fire", device_class: "energy", state_class: "total_increasing", errorMessages: [], hourly: [], daily, weekly, monthly, yearly };
+  }
+  let GAS_ATTRS = null; // calculé au premier affichage (round() est défini plus bas)
   const PRICES = { blue: { hc: 0.1356, hp: 0.1654 }, white: { hc: 0.1536, hp: 0.1921 }, red: { hc: 0.1615, hp: 0.7295 } };
 
   const state = {
-    card: "conso", price: "none", sky: "mixed",
+    card: "conso", price: "none", sky: "mixed", gprice: "0.105",
     page: "dark", theme: "v2", width: "mobile", days: "14", cost: "on", tempo: "on", week: "on", colors: "default", colorset: JSON.stringify({ hc_color: "#00bfa5", hp_color: "#ab47bc" }),
     today: "blue", tomorrow: "white", split: "yes", power: "9", over: "no", eco: "1",
   };
@@ -321,6 +351,8 @@
       const msg = { 1: "Pas d'alerte", 2: "Système électrique tendu", 3: "Système électrique très tendu, coupures possibles" }[state.eco];
       out["sensor.rte_ecowatt_j0"] = s("sensor.rte_ecowatt_j0", state.eco, { message: msg });
     }
+    GAS_ATTRS = GAS_ATTRS || gazpar();
+    out[GAS_ENTITY] = s(GAS_ENTITY, GAS_ATTRS.yearly[GAS_ATTRS.yearly.length - 1].energy_kwh, GAS_ATTRS);
     const prodAll = production(state.sky);
     out[PROD_ENTITY] = s(PROD_ENTITY, prodAll[0].total, prodAttrs(prodAll.slice(0, 31), prodAll));
     return out;
@@ -333,6 +365,11 @@
 
   function config() {
     if (state.card === "tempo") return { type: "custom:content-card-linky-new-tempo", theme: state.theme };
+    if (state.card === "gazpar") {
+      const c = { type: "custom:content-card-linky-new-gazpar", entity: GAS_ENTITY, days: Number(state.days), theme: state.theme };
+      if (state.gprice !== "none") c.price = Number(state.gprice);
+      return c;
+    }
     if (state.card !== "conso") {
       const c = { type: "custom:content-card-linky-new-production", entity: PROD_ENTITY };
       if (state.card === "bilan") { c.mode = "bilan"; c.consumption_entity = ENTITY; }
@@ -432,7 +469,7 @@
   });
 
   render();
-  Promise.all(["content-card-linky-new", "content-card-linky-new-editor", "content-card-linky-new-production", "content-card-linky-new-tempo"].map((t) => customElements.whenDefined(t))).then(render);
+  Promise.all(["content-card-linky-new", "content-card-linky-new-editor", "content-card-linky-new-production", "content-card-linky-new-tempo", "content-card-linky-new-gazpar"].map((t) => customElements.whenDefined(t))).then(render);
 })();
 </script>
 </body>

@@ -15,10 +15,14 @@
  *
  * Mini-carte Tempo (même fichier) : type: custom:content-card-linky-new-tempo
  *
+ * Gaz, compteur Gazpar de GRDF (même fichier) :
+ * type: custom:content-card-linky-new-gazpar
+ * entity: sensor.gazpar                (intégration home-assistant-gazpar, HACS)
+ *
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.8.1";
+const CARD_VERSION = "0.9.0-beta.1";
 
 /* ---------------------------------------------------------------- données */
 
@@ -1078,6 +1082,271 @@ ha-card.light .k-in { color: #2f5fb8; }
 .chart line.zero { stroke: var(--med-muted); stroke-width: .4; vector-effect: non-scaling-stroke; opacity: .6; }
 </style>`;
 
+/* ---------------------------------------------------------------- Gazpar */
+
+/** Lecture du capteur de l'intégration home-assistant-gazpar (ssenart) : sensor.gazpar et ses
+ *  attributs daily, weekly, monthly, yearly (listes de la plus ancienne à la plus récente). */
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const GAS = {
+  /** "13/10/2022" -> date locale */
+  date(s) {
+    const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(s || ""));
+    return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : null;
+  },
+  /** "Novembre 2022" ou "11/2022" -> 1er du mois */
+  month(s) {
+    const t = String(s || "").trim().toLowerCase();
+    let m = /^(\d{1,2})\/(\d{4})$/.exec(t);
+    if (m) return new Date(Number(m[2]), Number(m[1]) - 1, 1);
+    m = /^([a-zéèûô]+)\.?\s+(\d{4})$/.exec(t.normalize("NFC"));
+    if (m) {
+      const i = MOIS.findIndex((x) => x === m[1] || x.normalize("NFD").replace(/[̀-ͯ]/g, "") === m[1].normalize("NFD").replace(/[̀-ͯ]/g, ""));
+      if (i >= 0) return new Date(Number(m[2]), i, 1);
+    }
+    return GAS.date(s);
+  },
+  num(v) {
+    if (v === undefined || v === null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  },
+  list(v) { return Array.isArray(v) ? v : []; },
+  /** Séries triées de la plus récente à la plus ancienne. */
+  parse(a) {
+    const desc = (x, y) => (y.date?.getTime() || 0) - (x.date?.getTime() || 0);
+    const days = GAS.list(a.daily).map((d) => ({
+      date: GAS.date(d.time_period), kwh: GAS.num(d.energy_kwh), m3: GAS.num(d.volume_m3),
+      start: GAS.num(d.start_index_m3), end: GAS.num(d.end_index_m3), factor: GAS.num(d["converter_factor_kwh/m3"]),
+      temp: GAS.num(d.temperature_degC), type: d.type ? String(d.type) : "",
+    })).filter((d) => d.date).sort(desc);
+    const weeks = GAS.list(a.weekly).map((w) => {
+      const t = String(w.time_period || ""), dates = t.match(/\d{1,2}\/\d{1,2}\/\d{4}/g) || [];
+      return { date: GAS.date(dates[0]), end: GAS.date(dates[1]), label: t, kwh: GAS.num(w.energy_kwh), m3: GAS.num(w.volume_m3) };
+    })
+      .filter((w) => w.date).sort(desc);
+    const months = GAS.list(a.monthly).map((m) => ({ date: GAS.month(m.time_period), kwh: GAS.num(m.energy_kwh), m3: GAS.num(m.volume_m3) }))
+      .filter((m) => m.date).sort(desc);
+    const years = GAS.list(a.yearly).map((y) => ({ year: Number(String(y.time_period || "").match(/\d{4}/)?.[0]), kwh: GAS.num(y.energy_kwh), m3: GAS.num(y.volume_m3) }))
+      .filter((y) => Number.isFinite(y.year)).sort((x, y) => y.year - x.year);
+    return { days, weeks, months, years };
+  },
+  /** Le jour est-il une estimation (relevé manquant) plutôt qu'une mesure ? */
+  est(d) { return /estim/i.test(d.type || ""); },
+};
+
+const GAS_DEFAULTS = {
+  title: "Gazpar",
+  days: 14,
+  price: null,
+  show_pce: true,
+  theme: "v2",
+  font_size: 100,
+};
+
+const FLAME_ICON = `<svg viewBox="0 0 32 32" aria-hidden="true"><path class="flame" d="M16 3.5c1.2 4.2 6.8 7.4 6.8 14a6.8 6.8 0 0 1-13.6 0c0-3.4 1.7-5.6 3.3-7.3.3 2 1.4 3.4 2.7 3.9-.9-3.8.1-7.6.8-10.6z"/><path class="core" d="M16 28.2a3.5 3.5 0 0 1-3.5-3.5c0-2.2 1.9-3.4 2.6-5.3 1.6 1.5 4.4 3 4.4 5.3a3.5 3.5 0 0 1-3.5 3.5z"/></svg>`;
+
+class ContentCardLinkyNewGazpar extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("content-card-linky-new-gazpar-editor");
+  }
+
+  static getStubConfig(hass) {
+    const states = hass?.states || {};
+    const id = Object.keys(states).find((k) => k.startsWith("sensor.") && Array.isArray(states[k].attributes?.daily) && "pce" in (states[k].attributes || {}))
+      || (states["sensor.gazpar"] ? "sensor.gazpar" : null);
+    return { entity: id || "sensor.gazpar" };
+  }
+
+  setConfig(config) {
+    if (!config || !config.entity) throw new Error("Indiquez l'entité Gazpar (sensor.gazpar de l'intégration home-assistant-gazpar).");
+    this._config = { ...GAS_DEFAULTS, ...config, days: Number(config.days || GAS_DEFAULTS.days) };
+    this._selected = 0;
+    this._sig = null;
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      this.shadowRoot.addEventListener("click", (ev) => {
+        const t = ev.target.closest("[data-i]");
+        if (!t) return;
+        this._selected = Number(t.dataset.i);
+        this._render(true);
+      });
+    }
+    this._render(true);
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render(false);
+  }
+
+  getCardSize() {
+    return 6;
+  }
+
+  _price() {
+    const p = positivePrice(this._config.price);
+    return p;
+  }
+
+  _render(force) {
+    if (!this._config || !this._hass || !this.shadowRoot) return;
+    const c = this._config;
+    const st = this._hass.states?.[c.entity];
+    const sig = `${c.theme}|${this._hass?.themes?.darkMode}|${st?.last_updated || "-"}`;
+    if (!force && sig === this._sig) return;
+    this._sig = sig;
+    const theme = themeClass(c.theme, this._hass);
+    if (!st) {
+      this.shadowRoot.innerHTML = `${STYLE}${GAS_STYLE}<ha-card class="${theme} gas"${hcHpStyle(c)}><div class="empty">
+        <strong>Entité introuvable : ${esc(c.entity)}</strong>
+        <span>La carte lit le capteur de l'intégration <a href="https://github.com/ssenart/home-assistant-gazpar" target="_blank" rel="noopener">home-assistant-gazpar</a>
+        (HACS), par défaut <code>sensor.gazpar</code>.</span></div></ha-card>`;
+      return;
+    }
+    const a = st.attributes || {};
+    const data = GAS.parse(a);
+    const shown = data.days.slice(0, Math.max(1, Math.min(c.days, data.days.length)));
+    if (this._selected >= shown.length) this._selected = 0;
+    const errors = [].concat(a.errorMessages || a.error_messages || []).filter(Boolean);
+    const body = data.days.length
+      ? `${this._hero(data.days)}${this._tiles(data)}${this._chart(shown)}${this._selected > 0 ? this._detail(shown[this._selected]) : ""}`
+      : `<div class="empty"><span>Pas encore de relevé quotidien dans <code>${esc(c.entity)}</code> : GRDF publie les données avec un à trois jours de retard.</span></div>`;
+    this.shadowRoot.innerHTML = `${STYLE}${GAS_STYLE}<ha-card class="${theme} gas"${hcHpStyle(c)}>${this._header(a)}${body}
+      ${errors.length ? `<div class="gas-err">${errors.map((e) => esc(e)).join("<br>")}</div>` : ""}${this._footer(data.days)}</ha-card>`;
+  }
+
+  _header(a) {
+    const c = this._config;
+    const pce = a.pce ? String(a.pce) : "";
+    return `<header>
+      <div class="brand">${FLAME_ICON}
+        <div><div class="title">${esc(c.title || "Gazpar")}</div>${pce && c.show_pce !== false ? `<div class="sub">PCE ${esc(pce)}</div>` : ""}</div>
+      </div>
+    </header>`;
+  }
+
+  /** Évolution en % : une hausse de consommation est en orange, une baisse en vert. */
+  _evo(cur, prev, suffix) {
+    if (cur === null || prev === null || !prev) return "";
+    const e = ((cur - prev) / prev) * 100;
+    return `<div class="evo ${e > 0 ? "up" : "down"}">${e > 0 ? "+" : ""}${fmt(e, 1)} %${suffix}</div>`;
+  }
+
+  _hero(days) {
+    const d = days.find((x) => x.kwh !== null) || days[0];
+    const price = this._price();
+    const week = days.find((x) => x.date && d.date && Math.round((d.date - x.date) / 86400000) === 7);
+    const bits = [d.m3 !== null ? `${fmt(d.m3, 2)} m³` : "", d.temp !== null ? `${fmt(d.temp, 1)} °C` : "", GAS.est(d) ? "estimé" : ""].filter(Boolean);
+    return `<section class="hero">
+      <div>
+        <div class="hero-l">${esc(longDay(d.date))}</div>
+        <div class="hero-v">${fmt(d.kwh, 1)}<span>kWh</span></div>
+        ${this._evo(d.kwh, week ? week.kwh : null, ` par rapport au ${week ? week.date.toLocaleDateString("fr-FR", { weekday: "long" }) : ""} précédent`)}
+      </div>
+      <div class="hero-r">
+        ${price !== null && d.kwh !== null
+          ? `<div class="cost">${euro(d.kwh * price)}</div><div class="cost-l">à ${Number(price).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/kWh</div>`
+          : d.m3 !== null ? `<div class="peak">${fmt(d.m3, 2)}<span>m³</span></div><div class="cost-l">volume relevé</div>` : ""}
+        ${bits.length && price !== null ? `<div class="hero-p">${bits.join(" · ")}</div>` : d.temp !== null && price === null ? `<div class="hero-p">${fmt(d.temp, 1)} °C</div>` : ""}
+      </div>
+    </section>`;
+  }
+
+  _tiles(data) {
+    const now = new Date();
+    const price = this._price();
+    const money = (kwh) => (price !== null && kwh !== null ? `≈ ${euro(kwh * price)}` : "");
+    const same = (a, y, m) => a.date && a.date.getFullYear() === y && a.date.getMonth() === m;
+    const curM = data.months.find((m) => same(m, now.getFullYear(), now.getMonth()));
+    // mois en cours : la liste mensuelle, sinon la somme des jours du mois
+    const mDays = data.days.filter((d) => same(d, now.getFullYear(), now.getMonth()) && d.kwh !== null);
+    const cm = curM ? curM.kwh : mDays.length ? mDays.reduce((s, d) => s + d.kwh, 0) : null;
+    const last = data.days.find((d) => d.kwh !== null);
+    // même période l'an dernier (du 1er au même jour), d'après les relevés quotidiens ; sinon le mois complet
+    const lyDays = last ? data.days.filter((d) => same(d, now.getFullYear() - 1, now.getMonth()) && d.date.getDate() <= last.date.getDate() && d.kwh !== null) : [];
+    const cmLyFull = data.months.find((m) => same(m, now.getFullYear() - 1, now.getMonth()));
+    const cmLyDate = lyDays.length >= (last ? last.date.getDate() : 99) - 1 ? lyDays.reduce((s, d) => s + d.kwh, 0) : null;
+    const proj = cm !== null && last && same(last, now.getFullYear(), now.getMonth()) && last.date.getDate() >= 3
+      ? (cm / last.date.getDate()) * new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() : null;
+    const lmDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lm = data.months.find((m) => same(m, lmDate.getFullYear(), lmDate.getMonth()));
+    const lmLy = data.months.find((m) => same(m, lmDate.getFullYear() - 1, lmDate.getMonth()));
+    // dernière semaine complète (la semaine en cours n'est pas comparée à une semaine entière)
+    const full = data.weeks.filter((w) => !last || !w.end || w.end <= last.date);
+    const [w0, w1] = full;
+    const y0 = data.years.find((y) => y.year === now.getFullYear()), y1 = data.years.find((y) => y.year === now.getFullYear() - 1);
+    const month = (d) => d.toLocaleDateString("fr-FR", { month: "long" });
+    const tile = (label, kwh, evo, notes) => `<div class="tile">
+      <div class="tile-l">${cap(label)}</div><div class="tile-v">${fmt(kwh, 0)}<span>kWh</span></div>
+      ${evo}${notes.filter(Boolean).length ? `<div class="tile-n">${notes.filter(Boolean).join("<br>")}</div>` : ""}</div>`;
+    return `<section class="tiles">
+      ${tile(`${month(now)} en cours`, cm, "", [money(cm), proj !== null ? `Projection : ${fmt(proj, 0)} kWh` : "", cmLyDate !== null ? `À date l'an dernier : ${fmt(cmLyDate, 0)} kWh` : cmLyFull ? `${cap(month(now))} ${now.getFullYear() - 1} : ${fmt(cmLyFull.kwh, 0)} kWh` : ""])}
+      ${tile(month(lmDate), lm ? lm.kwh : null, this._evo(lm ? lm.kwh : null, lmLy ? lmLy.kwh : null, " sur un an"), [money(lm ? lm.kwh : null), lmLy ? `L'an dernier : ${fmt(lmLy.kwh, 0)} kWh` : ""])}
+      ${tile(w0 ? `Semaine du ${w0.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}` : "Semaine", w0 ? w0.kwh : null, this._evo(w0 ? w0.kwh : null, w1 ? w1.kwh : null, " sur la semaine d'avant"), [money(w0 ? w0.kwh : null)])}
+      ${tile(`Année ${now.getFullYear()}`, y0 ? y0.kwh : null, "", [money(y0 ? y0.kwh : null), y1 ? `${now.getFullYear() - 1} : ${fmt(y1.kwh, 0)} kWh` : ""])}
+    </section>`;
+  }
+
+  _chart(days) {
+    const chrono = days.map((d, i) => ({ ...d, i })).reverse();
+    const n = chrono.length;
+    const max = Math.max(0.1, ...chrono.map((d) => d.kwh || 0)) * 1.08;
+    const H = 100, slot = 100 / n, w = slot * 0.62;
+    const bars = chrono.map((d, k) => {
+      const x = k * slot + (slot - w) / 2;
+      const sel = d.i === this._selected ? `<rect class="sel" x="${k * slot}" y="0" width="${slot}" height="${H}"/>` : "";
+      const h = d.kwh !== null ? (d.kwh / max) * H : 0;
+      const bar = d.kwh !== null ? `<rect class="gasb${GAS.est(d) ? " est" : ""}" x="${x}" y="${H - h}" width="${w}" height="${h}"/>` : "";
+      return `${sel}${bar}<rect class="hit" data-i="${d.i}" x="${k * slot}" y="0" width="${slot}" height="${H}"/>`;
+    }).join("");
+    const labels = chrono.map((d) => {
+      const name = d.date ? d.date.toLocaleDateString("fr-FR", { weekday: n > 14 ? "narrow" : "short" }).replace(".", "") : "";
+      return `<button class="day ${d.i === this._selected ? "on" : ""}" data-i="${d.i}"><span>${name}</span><b>${d.date ? d.date.getDate() : ""}</b></button>`;
+    }).join("");
+    const anyEst = chrono.some((d) => GAS.est(d));
+    return `<section class="chart">
+      <div class="chart-h"><span>${n} derniers relevés</span><span class="legend"><i class="k-gas"></i>Consommation${anyEst ? '<i class="k-gas est"></i>Estimée' : ""}</span></div>
+      <svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" role="img" aria-label="Consommation de gaz des ${n} derniers jours">${bars}</svg>
+      <div class="days" style="grid-template-columns:repeat(${n},1fr)">${labels}</div>
+    </section>`;
+  }
+
+  _detail(d) {
+    if (!d || !d.date) return "";
+    const price = this._price();
+    const parts = [`<b>${fmt(d.kwh, 1)} kWh</b>`];
+    if (d.m3 !== null) parts.push(`${fmt(d.m3, 2)} m³`);
+    if (price !== null && d.kwh !== null) parts.push(`≈ ${euro(d.kwh * price)}`);
+    if (d.temp !== null) parts.push(`${fmt(d.temp, 1)} °C`);
+    const more = [d.start !== null && d.end !== null ? `Index ${fmt(d.start, 0)} → ${fmt(d.end, 0)} m³` : "", d.factor !== null ? `coefficient ${fmt(d.factor, 2)} kWh/m³` : "", d.type ? d.type.toLowerCase() : ""].filter(Boolean);
+    return `<section class="detail">
+      <div class="detail-h"><span>${esc(longDay(d.date))}</span></div>
+      <div class="detail-v">${parts.join('<span class="sep"></span>')}</div>
+      ${more.length ? `<div class="detail-p">${esc(more.join(" · "))}</div>` : ""}
+    </section>`;
+  }
+
+  _footer(days) {
+    const last = days.find((d) => d.kwh !== null && d.date);
+    const bits = [];
+    if (last) bits.push(`Données GRDF jusqu'au ${last.date.toLocaleDateString("fr-FR")}`);
+    bits.push("relevé quotidien du compteur Gazpar ; énergie = volume × coefficient de conversion (pouvoir calorifique du gaz)");
+    return `<footer>${bits.join(", ")}.</footer>`;
+  }
+}
+
+const GAS_STYLE = `<style>
+ha-card.gas { --med-gas: #ff8f3d; --med-gas-core: #ffd25a; }
+ha-card.gas.light { --med-gas: #d4630f; --med-gas-core: #e0a10a; }
+.brand .flame { fill: var(--med-gas); } .brand .core { fill: var(--med-gas-core); }
+.peak { font-size: 1.6rem; font-weight: 700; color: var(--med-gas); }
+.peak span { font-size: .85rem; font-weight: 500; color: var(--med-muted); margin-left: 3px; }
+.chart rect.gasb { fill: var(--med-gas); } .chart rect.gasb.est { opacity: .45; }
+.legend .k-gas { background: var(--med-gas); } .legend .k-gas.est { opacity: .45; }
+.gas-err { margin: 10px 12px 0; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--t-red); font-size: .8rem; }
+.empty a { color: var(--med-accent, var(--med-blue)); }
+</style>`;
+
 /* ------------------------------------------------------------ mini Tempo */
 
 const TEMPO_DEFAULTS = {
@@ -1646,6 +1915,26 @@ const TEMPO_LABELS = {
 };
 const ContentCardLinkyNewTempoEditor = makeEditor(TEMPO_SCHEMA, TEMPO_LABELS, TEMPO_DEFAULTS);
 
+const GAS_SCHEMA = [
+  { name: "entity", required: true, selector: { entity: { domain: "sensor" } } },
+  { name: "title", selector: { text: {} } },
+  DAYS_SELECT,
+  { name: "price", selector: { number: { min: 0, max: 1, step: 0.0001, mode: "box", unit_of_measurement: "€/kWh" } } },
+  THEME_SELECT,
+  { name: "show_pce", selector: { boolean: {} } },
+  SCHEMA.find((s) => s.name === "font_size"),
+].filter(Boolean);
+const GAS_LABELS = {
+  entity: "Compteur Gazpar (sensor.gazpar de l'intégration home-assistant-gazpar)",
+  title: "Titre",
+  days: "Historique affiché",
+  price: "Prix du kWh de gaz, pour estimer le coût (facultatif)",
+  theme: "Couleurs de la carte",
+  show_pce: "Afficher le numéro de PCE",
+  font_size: "Taille du texte",
+};
+const ContentCardLinkyNewGazparEditor = makeEditor(GAS_SCHEMA, GAS_LABELS, GAS_DEFAULTS);
+
 /* ---------------------------------------------------------- enregistrement */
 
 if (typeof customElements !== "undefined") {
@@ -1659,6 +1948,8 @@ if (typeof customElements !== "undefined") {
   define("content-card-linky-new-production-editor", ContentCardLinkyNewProductionEditor);
   define("content-card-linky-new-tempo", ContentCardLinkyNewTempo);
   define("content-card-linky-new-tempo-editor", ContentCardLinkyNewTempoEditor);
+  define("content-card-linky-new-gazpar", ContentCardLinkyNewGazpar);
+  define("content-card-linky-new-gazpar-editor", ContentCardLinkyNewGazparEditor);
   window.customCards = window.customCards || [];
   const register = (type, name, description) => {
     if (!window.customCards.some((c) => c.type === type)) window.customCards.push({ type, name, description, preview: true });
@@ -1674,7 +1965,12 @@ if (typeof customElements !== "undefined") {
     "Carte Enedis Linky New · Production",
     "Production et bilan des échanges avec le réseau (injecté / soutiré), pour MyElectricalData new.",
   );
+  register(
+    "content-card-linky-new-gazpar",
+    "Carte Enedis Linky New · Gazpar",
+    "Consommation de gaz du compteur Gazpar (GRDF) : jour, semaine, mois, année, coût, avec l'intégration home-assistant-gazpar.",
+  );
   console.info(`%c CARTE-ENEDIS-LINKY-NEW %c ${CARD_VERSION} `, "background:#96d21f;color:#1a2434;font-weight:700", "background:#1d93e3;color:#fff");
 }
 
-if (typeof module !== "undefined") module.exports = { MED };
+if (typeof module !== "undefined") module.exports = { MED, GAS };
