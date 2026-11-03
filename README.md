@@ -263,6 +263,8 @@ price: 0.105
 | `show_pce` | `true` | Afficher le numéro de PCE sous le titre |
 | `font_size` | `100` | Taille du texte, de 70 à 150 % |
 
+**Pas encore de compteur Gazpar ?** Le package [`docs/gazpar_demo.yaml`](https://github.com/Marlboro62/content-card-linky-new/blob/main/docs/gazpar_demo.yaml) crée un capteur factice `sensor.gazpar_demo`, avec les mêmes attributs que l'intégration, pour essayer la carte : copiez-le dans `/config/packages/` (avec `packages: !include_dir_named packages` sous `homeassistant:` dans `configuration.yaml`), puis redémarrez.
+
 > GRDF publie les relevés avec **un à trois jours de retard**. L'énergie est calculée par GRDF à partir du volume et du coefficient de conversion (pouvoir calorifique du gaz), qui varie un peu d'un jour à l'autre.
 
 ## À savoir

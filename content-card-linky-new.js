@@ -22,7 +22,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.9.0-beta.1";
+const CARD_VERSION = "0.9.0-beta.2";
 
 /* ---------------------------------------------------------------- données */
 
@@ -1265,7 +1265,7 @@ class ContentCardLinkyNewGazpar extends HTMLElement {
     // même période l'an dernier (du 1er au même jour), d'après les relevés quotidiens ; sinon le mois complet
     const lyDays = last ? data.days.filter((d) => same(d, now.getFullYear() - 1, now.getMonth()) && d.date.getDate() <= last.date.getDate() && d.kwh !== null) : [];
     const cmLyFull = data.months.find((m) => same(m, now.getFullYear() - 1, now.getMonth()));
-    const cmLyDate = lyDays.length >= (last ? last.date.getDate() : 99) - 1 ? lyDays.reduce((s, d) => s + d.kwh, 0) : null;
+    const cmLyDate = lyDays.length && lyDays.length >= (last ? last.date.getDate() : 99) - 1 ? lyDays.reduce((s, d) => s + d.kwh, 0) : null;
     const proj = cm !== null && last && same(last, now.getFullYear(), now.getMonth()) && last.date.getDate() >= 3
       ? (cm / last.date.getDate()) * new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() : null;
     const lmDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);

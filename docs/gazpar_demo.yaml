@@ -1,0 +1,142 @@
+# Capteur Gazpar FACTICE pour tester la carte custom:content-card-linky-new-gazpar
+# sans compteur ni intégration home-assistant-gazpar.
+#
+# Installation :
+#   1. configuration.yaml doit charger les packages :
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   2. copier ce fichier dans /config/packages/gazpar_demo.yaml
+#   3. Outils de développement › YAML › Vérifier la configuration, puis redémarrer
+#      (ou recharger les « Entités de modèle »)
+#
+# Carte :
+#   type: custom:content-card-linky-new-gazpar
+#   entity: sensor.gazpar_demo
+#   price: 0.105
+#
+# Les valeurs sont calculées (hiver plus froid = plus de gaz), elles ne viennent d'aucun compteur.
+# Mêmes attributs que l'intégration : daily (45 derniers jours), weekly, monthly, yearly,
+# listes de la plus ancienne à la plus récente, données jusqu'à J-2 comme chez GRDF.
+# Pour supprimer : effacer ce fichier et redémarrer.
+
+recorder:
+  exclude:
+    entities:
+      - sensor.gazpar_demo # attributs volumineux : inutile de les enregistrer dans l'historique
+
+template:
+  - triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+      - trigger: time_pattern
+        hours: "/6"
+    sensor:
+      - name: "Gazpar démo"
+        unique_id: gazpar_demo
+        icon: mdi:fire
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        state: >
+          {% set ns = namespace(t=0) %}
+          {% for i in range(2, 366) %}
+            {% set d = now() - timedelta(days=i) %}
+            {% set doy = d.strftime('%j') | int %}
+            {% set temp = 12 - 9 * cos(2 * pi * (doy - 15) / 365) + 3 * sin(i * 1.7) %}
+            {% set m3 = [0.4, (17 - temp) * 0.32 + 0.4 * sin(i * 2.3)] | max %}
+            {% set ns.t = ns.t + m3 * 11.2 %}
+          {% endfor %}
+          {{ ns.t | round(0) }}
+        attributes:
+          attribution: "Données factices (démo)"
+          pce: "GI000000000000"
+          errorMessages: "{{ [] }}"
+          hourly: "{{ [] }}"
+          daily: >
+            {% set ns = namespace(l=[], idx=18000.0) %}
+            {% for i in range(46, 1, -1) %}
+              {% set d = now() - timedelta(days=i) %}
+              {% set doy = d.strftime('%j') | int %}
+              {% set temp = 12 - 9 * cos(2 * pi * (doy - 15) / 365) + 3 * sin(i * 1.7) %}
+              {% set m3 = [0.4, (17 - temp) * 0.32 + 0.4 * sin(i * 2.3)] | max %}
+              {% set f = 11.2 + 0.08 * sin(i / 30) %}
+              {% set ns.l = ns.l + [{
+                'time_period': d.strftime('%d/%m/%Y'),
+                'start_index_m3': ns.idx | round(0) | int,
+                'end_index_m3': (ns.idx + m3) | round(0) | int,
+                'volume_m3': m3 | round(2),
+                'energy_kwh': (m3 * f) | round(1),
+                'converter_factor_kwh/m3': f | round(3),
+                'temperature_degC': temp | round(1),
+                'type': 'Estimé' if i == 3 else 'Mesuré',
+                'timestamp': now().isoformat()
+              }] %}
+              {% set ns.idx = ns.idx + m3 %}
+            {% endfor %}
+            {{ ns.l }}
+          weekly: >
+            {% set ns = namespace(l=[]) %}
+            {% set last = now() - timedelta(days=2) %}
+            {% set monday = (last - timedelta(days=last.weekday())).replace(hour=12, minute=0, second=0, microsecond=0) %}
+            {% for w in range(8, -1, -1) %}
+              {% set start = monday - timedelta(days=7 * w) %}
+              {% set s = namespace(m3=0, kwh=0) %}
+              {% for k in range(7) %}
+                {% set d = start + timedelta(days=k) %}
+                {% if d <= last %}
+                  {% set i = ((now() - d).total_seconds() / 86400) | round(0) | int %}
+                  {% set doy = d.strftime('%j') | int %}
+                  {% set temp = 12 - 9 * cos(2 * pi * (doy - 15) / 365) + 3 * sin(i * 1.7) %}
+                  {% set m3 = [0.4, (17 - temp) * 0.32 + 0.4 * sin(i * 2.3)] | max %}
+                  {% set s.m3 = s.m3 + m3 %}
+                  {% set s.kwh = s.kwh + m3 * 11.2 %}
+                {% endif %}
+              {% endfor %}
+              {% set ns.l = ns.l + [{
+                'time_period': 'Du ' ~ start.strftime('%d/%m/%Y') ~ ' au ' ~ (start + timedelta(days=6)).strftime('%d/%m/%Y'),
+                'volume_m3': s.m3 | round(1),
+                'energy_kwh': s.kwh | round(0),
+                'timestamp': now().isoformat()
+              }] %}
+            {% endfor %}
+            {{ ns.l }}
+          monthly: >
+            {% set mois = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'] %}
+            {% set ns = namespace(l=[], key='', m3=0, kwh=0) %}
+            {% for i in range(430, 1, -1) %}
+              {% set d = now() - timedelta(days=i) %}
+              {% set key = mois[d.month - 1] ~ ' ' ~ d.year %}
+              {% if key != ns.key and ns.key != '' %}
+                {% set ns.l = ns.l + [{'time_period': ns.key, 'volume_m3': ns.m3 | round(1), 'energy_kwh': ns.kwh | round(0), 'timestamp': now().isoformat()}] %}
+                {% set ns.m3 = 0 %}
+                {% set ns.kwh = 0 %}
+              {% endif %}
+              {% set ns.key = key %}
+              {% set doy = d.strftime('%j') | int %}
+              {% set temp = 12 - 9 * cos(2 * pi * (doy - 15) / 365) + 3 * sin(i * 1.7) %}
+              {% set m3 = [0.4, (17 - temp) * 0.32 + 0.4 * sin(i * 2.3)] | max %}
+              {% set ns.m3 = ns.m3 + m3 %}
+              {% set ns.kwh = ns.kwh + m3 * 11.2 %}
+            {% endfor %}
+            {% set ns.l = ns.l + [{'time_period': ns.key, 'volume_m3': ns.m3 | round(1), 'energy_kwh': ns.kwh | round(0), 'timestamp': now().isoformat()}] %}
+            {{ ns.l }}
+          yearly: >
+            {% set ns = namespace(l=[], y=0, m3=0, kwh=0) %}
+            {% for i in range(730, 1, -1) %}
+              {% set d = now() - timedelta(days=i) %}
+              {% if d.year != ns.y and ns.y != 0 %}
+                {% set ns.l = ns.l + [{'time_period': ns.y | string, 'volume_m3': ns.m3 | round(0), 'energy_kwh': ns.kwh | round(0), 'timestamp': now().isoformat()}] %}
+                {% set ns.m3 = 0 %}
+                {% set ns.kwh = 0 %}
+              {% endif %}
+              {% set ns.y = d.year %}
+              {% set doy = d.strftime('%j') | int %}
+              {% set temp = 12 - 9 * cos(2 * pi * (doy - 15) / 365) + 3 * sin(i * 1.7) %}
+              {% set m3 = [0.4, (17 - temp) * 0.32 + 0.4 * sin(i * 2.3)] | max %}
+              {% set ns.m3 = ns.m3 + m3 %}
+              {% set ns.kwh = ns.kwh + m3 * 11.2 %}
+            {% endfor %}
+            {% set ns.l = ns.l + [{'time_period': ns.y | string, 'volume_m3': ns.m3 | round(0), 'energy_kwh': ns.kwh | round(0), 'timestamp': now().isoformat()}] %}
+            {{ ns.l }}
