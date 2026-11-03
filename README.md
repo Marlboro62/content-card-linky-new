@@ -96,9 +96,10 @@ Selon la version de Home Assistant, ces entités peuvent aussi s'appeler `sensor
 
 ### Avec HACS
 
-1. HACS, menu ⋮, **Dépôts personnalisés**.
-2. Ajoutez `https://github.com/Marlboro62/content-card-linky-new`, catégorie **Tableau de bord** (Dashboard).
-3. Installez **Carte Enedis Linky New**, puis rechargez la page (Ctrl+F5).
+1. Dans HACS, cherchez **Carte Enedis Linky New** et installez-la.
+2. Rechargez la page (Ctrl+F5).
+
+Si la carte n'apparaît pas encore dans la recherche de HACS, ajoutez le dépôt à la main : menu **⋮** → **Dépôts personnalisés**, adresse `https://github.com/Marlboro62/content-card-linky-new`, type **Tableau de bord** (Dashboard), puis cherchez **Carte Enedis Linky New**.
 
 ### Manuellement
 
