@@ -22,7 +22,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.9.0-beta.2";
+const CARD_VERSION = "0.9.0";
 
 /* ---------------------------------------------------------------- données */
 

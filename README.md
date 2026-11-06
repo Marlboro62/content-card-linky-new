@@ -43,7 +43,7 @@ Cartes Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalDat
 
 Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de MyElectricalData new. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
-## Nouveautés de la 0.9.0 (bêta)
+## Nouveautés de la 0.9.0
 
 **Nouvelle carte** (demande d'olivr2s, issue #12)
 
