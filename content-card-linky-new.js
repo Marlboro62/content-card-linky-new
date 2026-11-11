@@ -22,7 +22,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.9.0";
+const CARD_VERSION = "0.9.1-beta.1";
 
 /* ---------------------------------------------------------------- données */
 
@@ -276,6 +276,7 @@ const DEFAULTS = {
   theme: "v2",
   show_pdl: true,
   show_tempo: true,
+  show_ecowatt: true,
   show_week: false,
   show_power: true,
   tiles_horizontal: false,
@@ -382,7 +383,8 @@ class ContentCardLinkyNew extends HTMLElement {
 
     const a = main.attributes || {};
     const all = MED.days(a);
-    const prices = c.show_cost ? this._prices() : null;
+    // Sans Tempo (show_tempo: false), les prix Tempo ne servent pas au calcul du coût
+    const prices = c.show_cost && c.show_tempo !== false ? this._prices() : null;
     const hpPct = MED.num(a.peak_offpeak_percent);
     // Source du coût, par priorité :
     // 1. prix saisis dans la carte (contrat dont les prix ne sont pas dans MyElectricalData) ;
@@ -692,6 +694,7 @@ class ContentCardLinkyNew extends HTMLElement {
   /* ---------------------------------------------------------- EcoWatt */
 
   _ecowatt() {
+    if (this._config.show_ecowatt === false) return "";
     const st = this._state(this._config.ecowatt);
     if (!st || ["unknown", "unavailable", ""].includes(String(st.state))) return "";
     const LEVELS = {
@@ -1620,6 +1623,7 @@ const SCHEMA = [
   { name: "show_cost", selector: { boolean: {} } },
   { name: "show_pdl", selector: { boolean: {} } },
   { name: "show_tempo", selector: { boolean: {} } },
+  { name: "show_ecowatt", selector: { boolean: {} } },
   { name: "show_week", selector: { boolean: {} } },
   { name: "tiles_horizontal", selector: { boolean: {} } },
   { name: "show_power", selector: { boolean: {} } },
@@ -1640,7 +1644,8 @@ const LABELS = {
   theme: "Couleurs de la carte",
   show_cost: "Afficher les coûts estimés",
   show_pdl: "Afficher le numéro de PDL",
-  show_tempo: "Afficher Tempo (couleurs d'aujourd'hui et de demain, jours restants, pastilles du graphique)",
+  show_tempo: "Afficher Tempo (couleurs d'aujourd'hui et de demain, jours restants, pastilles du graphique, coût aux prix Tempo) : à couper sans contrat Tempo",
+  show_ecowatt: "Afficher EcoWatt",
   show_week: "Afficher la semaine en cours et la semaine dernière",
   tiles_horizontal: "Cases en 3 colonnes (avec la semaine)",
   show_power: "Afficher la puissance maximale sur la période",

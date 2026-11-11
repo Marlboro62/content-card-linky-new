@@ -136,7 +136,8 @@ theme: v2
 | `theme` | `v2` | `v2` : style bleu nuit de l'interface MyElectricalData (valeur conservée pour compatibilité) ; `auto` : style MyElectricalData, bleu nuit quand Home Assistant est en mode sombre et clair en mode clair ; `ha` : couleurs du thème Home Assistant |
 | `show_cost` | `true` | Afficher les coûts estimés |
 | `show_pdl` | `true` | Afficher le numéro de PDL sous le titre |
-| `show_tempo` | `true` | Afficher Tempo : couleurs d'aujourd'hui et de demain, jours restants et pastilles de couleur sous le graphique. Mettre `false` pour masquer tout l'affichage Tempo (le calcul des coûts n'est pas modifié) |
+| `show_tempo` | `true` | Afficher Tempo : couleurs d'aujourd'hui et de demain, jours restants et pastilles de couleur sous le graphique. Mettre `false` sans contrat Tempo : tout l'affichage Tempo disparaît et les prix Tempo ne servent plus au calcul du coût |
+| `show_ecowatt` | `true` | Afficher EcoWatt. Mettre `false` pour le masquer |
 | `show_week` | `false` | Ajouter deux tuiles : **semaine en cours** (du lundi à hier, comparée à la même période de la semaine dernière) et **semaine dernière** (lundi à dimanche) |
 | `tiles_horizontal` | `false` | Avec `show_week` : tuiles en **3 colonnes de 2**, semaine, mois et année (en cours en haut, précédente en bas), pour une carte moins haute |
 | `show_power` | `true` | Afficher le bloc de la **puissance maximale** sur la période du graphique |
