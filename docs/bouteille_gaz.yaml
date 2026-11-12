@@ -1,0 +1,166 @@
+# Suivi d'une bouteille de gaz (butane, propane) avec un tag NFC,
+# pour la carte custom:content-card-linky-new-bouteille.
+#
+# Principe : on bipe un tag NFC (ou on appuie sur un bouton) à chaque nouvelle bouteille.
+# L'automatisation note la durée de la bouteille précédente, la date d'installation,
+# et ajoute un événement au calendrier (historique des bouteilles dans la carte).
+#
+# Installation :
+#   1. configuration.yaml doit charger les packages :
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   2. copier ce fichier dans /config/packages/bouteille_gaz.yaml
+#   3. remplacer « Bouteille Gaz » (tag_id) par l'identifiant de votre tag NFC,
+#      calendar.home par votre calendrier (calendrier local : intégration « Calendrier local »)
+#      et notify.mobile_app_mon_telephone par le service de notification de votre téléphone
+#   4. Outils › YAML › Vérifier la configuration, puis redémarrer
+#   5. régler la date d'installation de la bouteille actuelle, son prix et sa capacité
+#
+# Carte :
+#   type: custom:content-card-linky-new-bouteille
+#   calendar: calendar.home
+#   label: Butane 10 kg
+#
+# Les estimations (gaz restant, fin, coût) apparaissent après la première bouteille terminée.
+
+input_datetime:
+  bouteille_gaz_installee_le:
+    name: Bouteille gaz installée le
+    has_date: true
+    has_time: true
+    icon: mdi:gas-cylinder
+
+input_number:
+  bouteille_gaz_prix:
+    name: Bouteille gaz prix
+    min: 0
+    max: 100
+    step: 0.01
+    mode: box
+    unit_of_measurement: "€"
+    icon: mdi:cash
+  bouteille_gaz_capacite:
+    name: Bouteille gaz capacité
+    min: 1
+    max: 50
+    step: 0.5
+    mode: box
+    unit_of_measurement: kg
+    icon: mdi:weight-kilogram
+  bouteille_gaz_duree_totale:
+    name: Bouteille gaz durée totale
+    min: 0
+    max: 100000
+    step: 0.1
+    mode: box
+    unit_of_measurement: j
+    icon: mdi:sigma
+  bouteille_gaz_derniere_duree:
+    name: Bouteille gaz dernière durée
+    min: 0
+    max: 10000
+    step: 0.1
+    mode: box
+    unit_of_measurement: j
+    icon: mdi:history
+
+counter:
+  bouteille_gaz_terminees:
+    name: Bouteille gaz terminées
+    minimum: 0
+    restore: true
+    icon: mdi:counter
+
+template:
+  - sensor:
+      - name: Bouteille gaz jours
+        unique_id: bouteille_gaz_jours
+        unit_of_measurement: d
+        device_class: duration
+        state_class: measurement
+        icon: mdi:calendar-clock
+        state: >
+          {% set t = state_attr('input_datetime.bouteille_gaz_installee_le', 'timestamp') %}
+          {{ ((now().timestamp() - t) / 86400) | round(1) if t else none }}
+      - name: Bouteille gaz durée moyenne
+        unique_id: bouteille_gaz_duree_moyenne
+        unit_of_measurement: d
+        device_class: duration
+        icon: mdi:timer-sand
+        state: >
+          {% set n = states('counter.bouteille_gaz_terminees') | int(0) %}
+          {% set tot = states('input_number.bouteille_gaz_duree_totale') | float(0) %}
+          {{ (tot / n) | round(1) if n > 0 else none }}
+      - name: Bouteille gaz jours restants
+        unique_id: bouteille_gaz_jours_restants
+        unit_of_measurement: d
+        device_class: duration
+        icon: mdi:calendar-end
+        state: >
+          {% set moy = states('sensor.bouteille_gaz_duree_moyenne') | float(0) %}
+          {% set j = states('sensor.bouteille_gaz_jours') | float(0) %}
+          {{ ([0, moy - j] | max) | round(0) if moy > 0 else none }}
+
+automation:
+  - id: bouteille_gaz_nouvelle_bouteille
+    alias: Bouteille gaz – nouvelle bouteille
+    description: Bip du tag NFC à l'installation d'une bouteille neuve.
+    mode: single
+    triggers:
+      - trigger: tag
+        tag_id: Bouteille Gaz
+    actions:
+      # un double bip par erreur ne compte pas une bouteille de plus
+      - if:
+          - condition: numeric_state
+            entity_id: sensor.bouteille_gaz_jours
+            below: 1
+        then:
+          - stop: Bouteille installée il y a moins d'un jour
+      - variables:
+          duree: "{{ states('sensor.bouteille_gaz_jours') | float(0) | round(1) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.bouteille_gaz_derniere_duree
+        data:
+          value: "{{ duree }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.bouteille_gaz_duree_totale
+        data:
+          value: "{{ (states('input_number.bouteille_gaz_duree_totale') | float(0) + duree) | round(1) }}"
+      - action: counter.increment
+        target:
+          entity_id: counter.bouteille_gaz_terminees
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.bouteille_gaz_installee_le
+        data:
+          timestamp: "{{ now().timestamp() }}"
+      - action: calendar.create_event
+        target:
+          entity_id: calendar.home
+        data:
+          summary: Bouteille Gaz
+          description: "Bouteille précédente : {{ duree }} jours"
+          start_date_time: "{{ now() }}"
+          end_date_time: "{{ now() + timedelta(minutes=1) }}"
+
+  - id: bouteille_gaz_bientot_vide
+    alias: Bouteille gaz – bientôt vide
+    mode: single
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.bouteille_gaz_jours_restants
+        below: 10
+    conditions:
+      # pas de fausse alerte au redémarrage ou quand la moyenne apparaît
+      - condition: template
+        value_template: "{{ trigger.from_state is not none and trigger.from_state.state not in ['unavailable', 'unknown'] }}"
+    actions:
+      - action: notify.mobile_app_mon_telephone
+        data:
+          title: Bouteille de gaz
+          message: >
+            La bouteille de gaz devrait être vide dans environ
+            {{ states('sensor.bouteille_gaz_jours_restants') | int(0) }} jours.

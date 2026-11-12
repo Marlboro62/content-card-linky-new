@@ -43,6 +43,12 @@ Cartes Lovelace pour **[MyElectricalData new](https://github.com/MyElectricalDat
 
 Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalData/content-card-linky), réécrite pour les entités publiées par l'export Home Assistant de MyElectricalData new. Pour l'add-on MyElectricalData **v1**, utilisez content-card-linky.
 
+## Nouveautés de la 0.10.0
+
+**Nouvelle carte**
+
+- **Carte Bouteille de gaz** (`custom:content-card-linky-new-bouteille`) : bouteille de gaz (butane, propane) suivie par un tag NFC bipé à chaque changement : jours en service, gaz restant estimé, fin estimée, consommation, coût et historique des bouteilles. Voir [Carte Bouteille de gaz](#carte-bouteille-de-gaz).
+
 ## Nouveautés de la 0.9.0
 
 **Nouvelle carte** (demande d'olivr2s, issue #12)
@@ -271,6 +277,42 @@ price: 0.105
 **Pas encore de compteur Gazpar ?** Le package [`docs/gazpar_demo.yaml`](https://github.com/Marlboro62/content-card-linky-new/blob/main/docs/gazpar_demo.yaml) crée un capteur factice `sensor.gazpar_demo`, avec les mêmes attributs que l'intégration, pour essayer la carte : copiez-le dans `/config/packages/` (avec `packages: !include_dir_named packages` sous `homeassistant:` dans `configuration.yaml`), puis redémarrez.
 
 > GRDF publie les relevés avec **un à trois jours de retard**. L'énergie est calculée par GRDF à partir du volume et du coefficient de conversion (pouvoir calorifique du gaz), qui varie un peu d'un jour à l'autre.
+
+## Carte Bouteille de gaz
+
+Pour une cuisinière ou un chauffage sur **bouteille de gaz** (butane, propane), `custom:content-card-linky-new-bouteille` suit la bouteille en service, dans le même style. Pas de ressource à ajouter.
+
+Le principe : on **bipe un tag NFC** (ou on appuie sur un bouton) à chaque nouvelle bouteille. Une automatisation note la date d'installation et la durée de la bouteille précédente, et ajoute un événement au calendrier. Le package [`docs/bouteille_gaz.yaml`](https://github.com/Marlboro62/content-card-linky-new/blob/main/docs/bouteille_gaz.yaml) crée tout ce qu'il faut : date d'installation, prix, capacité, durée moyenne, automatisation du tag et alerte « bientôt vide ».
+
+- **En service depuis** : jours depuis l'installation, jours restants estimés et jauge du gaz restant (en kg et en %).
+- **Tuiles** : durée moyenne d'une bouteille, fin estimée, consommation (g/jour), coût par mois et par an.
+- **Historique** des bouteilles, lu dans le calendrier où chaque changement est noté.
+
+<p align="center"><img src="https://raw.githubusercontent.com/Marlboro62/content-card-linky-new/main/images/bouteille-demo.png" alt="Carte Bouteille de gaz avec des données simulées" width="360"></p>
+<p align="center"><sub>Carte Bouteille de gaz, données simulées.</sub></p>
+
+```yaml
+type: custom:content-card-linky-new-bouteille
+calendar: calendar.home
+label: Butane 10 kg
+```
+
+| Option | Défaut | Description |
+|---|---|---|
+| `installed` | `input_datetime.bouteille_gaz_installee_le` | Date d'installation de la bouteille en service |
+| `average` | `sensor.bouteille_gaz_duree_moyenne` | Durée moyenne d'une bouteille, en jours ; sans elle, calculée d'après le calendrier |
+| `price` | `input_number.bouteille_gaz_prix` | Prix d'une recharge : entité ou nombre |
+| `capacity` | `input_number.bouteille_gaz_capacite` | Capacité en kg : entité ou nombre (`10` si absente) |
+| `calendar` | aucun | Calendrier où chaque changement est noté, pour l'historique |
+| `calendar_summary` | `Bouteille Gaz` | Titre des événements de changement dans ce calendrier |
+| `title` | `Bouteille de gaz` | Titre affiché |
+| `label` | aucun | Texte sous le titre (type de bouteille) |
+| `history` | `5` | Bouteilles affichées dans l'historique |
+| `warn_days` | `10` | Jours restants à partir desquels la jauge passe en rouge |
+| `theme` | `v2` | `v2`, `auto` ou `ha`, comme la carte de consommation |
+| `font_size` | `100` | Taille du texte, de 70 à 150 % |
+
+> Les estimations (gaz restant, fin, consommation, coût) apparaissent **après la première bouteille terminée** : il faut une durée complète pour connaître la consommation. Elles supposent un usage régulier.
 
 ## À savoir
 
