@@ -19,10 +19,13 @@
  * type: custom:content-card-linky-new-gazpar
  * entity: sensor.gazpar                (intégration home-assistant-gazpar, HACS)
  *
+ * Bouteille de gaz (même fichier) : type: custom:content-card-linky-new-bouteille
+ * installed: input_datetime.bouteille_gaz_installee_le   (mis à jour à chaque changement de bouteille)
+ *
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.9.1-beta.1";
+const CARD_VERSION = "0.10.0-beta.1";
 
 /* ---------------------------------------------------------------- données */
 
@@ -1350,6 +1353,224 @@ ha-card.gas.light { --med-gas: #d4630f; --med-gas-core: #e0a10a; }
 .empty a { color: var(--med-accent, var(--med-blue)); }
 </style>`;
 
+/* --------------------------------------------------------- bouteille de gaz */
+
+/** Bouteille de gaz (butane, propane) suivie par un tag NFC bipé à chaque changement :
+ *  date d'installation (input_datetime), durée moyenne (capteur, ou calculée d'après le calendrier
+ *  où chaque changement est noté), prix et capacité de la bouteille (nombres ou input_number). */
+const BOTTLE_DEFAULTS = {
+  title: "Bouteille de gaz",
+  installed: "input_datetime.bouteille_gaz_installee_le",
+  average: "sensor.bouteille_gaz_duree_moyenne",
+  price: "input_number.bouteille_gaz_prix",
+  capacity: "input_number.bouteille_gaz_capacite",
+  calendar: "",
+  calendar_summary: "Bouteille Gaz",
+  label: "",
+  history: 5,
+  warn_days: 10,
+  theme: "v2",
+  font_size: 100,
+};
+
+const BOTTLE = {
+  /** Valeur d'une option : nombre écrit dans la carte, ou état d'une entité (input_number, sensor). */
+  value(hass, v) {
+    if (v === undefined || v === null || v === "") return null;
+    if (typeof v === "number") return Number.isFinite(v) ? v : null;
+    const s = String(v).trim();
+    if (/^[a-z_]+\.[\w-]+$/.test(s)) return GAS.num(hass?.states?.[s]?.state);
+    return GAS.num(s.replace(",", "."));
+  },
+  /** Date d'installation : attribut timestamp de l'input_datetime, sinon son état. */
+  installed(hass, id) {
+    const st = hass?.states?.[id];
+    if (!st) return null;
+    const ts = Number(st.attributes?.timestamp);
+    if (Number.isFinite(ts) && ts > 0) return new Date(ts * 1000);
+    const d = new Date(String(st.state).replace(" ", "T"));
+    return Number.isNaN(d.getTime()) ? null : d;
+  },
+  /** Bouteilles d'après les changements notés au calendrier (du plus récent au plus ancien). */
+  bottles(changes, installed, now) {
+    const dates = [...changes].sort((a, b) => a - b);
+    // la date d'installation fait foi pour la bouteille en service
+    if (installed && !dates.some((d) => Math.abs(d - installed) < 86400000)) dates.push(installed);
+    dates.sort((a, b) => a - b);
+    return dates.map((start, i) => {
+      const end = dates[i + 1] || null;
+      return { start, end, days: ((end || now) - start) / 86400000, current: !end };
+    }).reverse();
+  },
+};
+
+const BOTTLE_ICON = `<svg viewBox="0 0 32 32" aria-hidden="true"><path class="cyl" d="M12 3.5h8v3h-8z"/><path class="cyl" d="M10 8.5h12a3 3 0 0 1 3 3v15a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 7 26.5v-15a3 3 0 0 1 3-3z"/><path class="band" d="M7 15h18v3H7z"/></svg>`;
+
+class ContentCardLinkyNewBouteille extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("content-card-linky-new-bouteille-editor");
+  }
+
+  static getStubConfig(hass) {
+    const states = hass?.states || {};
+    const installed = Object.keys(states).find((k) => k.startsWith("input_datetime.") && /bouteille|gaz|butane|propane/.test(k));
+    return { installed: installed || BOTTLE_DEFAULTS.installed };
+  }
+
+  setConfig(config) {
+    if (!config) throw new Error("Configuration de la carte manquante.");
+    this._config = { ...BOTTLE_DEFAULTS, ...config, history: Number(config.history || BOTTLE_DEFAULTS.history) };
+    this._sig = null;
+    this._changes = null;
+    this._fetched = 0;
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._render(true);
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._loadCalendar();
+    this._render(false);
+  }
+
+  getCardSize() {
+    return 5;
+  }
+
+  /** Changements de bouteille notés au calendrier (lus toutes les 6 heures, ou après un nouveau bip). */
+  async _loadCalendar() {
+    const c = this._config;
+    if (!c?.calendar || !this._hass?.callApi || this._loading) return;
+    const inst = BOTTLE.installed(this._hass, c.installed);
+    const key = inst ? inst.getTime() : 0;
+    if (this._changes && this._key === key && Date.now() - this._fetched < 6 * 3600000) return;
+    this._loading = true;
+    try {
+      const end = new Date(Date.now() + 86400000), start = new Date(end.getTime() - 6 * 365 * 86400000);
+      const events = await this._hass.callApi("GET", `calendars/${c.calendar}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      const want = String(c.calendar_summary || "").trim().toLowerCase();
+      this._changes = (Array.isArray(events) ? events : [])
+        .filter((e) => String(e.summary || "").trim().toLowerCase() === want)
+        .map((e) => new Date(e.start?.dateTime || e.start?.date || e.start))
+        .filter((d) => !Number.isNaN(d.getTime()));
+      this._calError = null;
+    } catch (err) {
+      this._changes = [];
+      this._calError = String(err?.body?.message || err?.message || err || "erreur");
+    }
+    this._fetched = Date.now();
+    this._key = key;
+    this._loading = false;
+    this._render(true);
+  }
+
+  _render(force) {
+    if (!this._config || !this._hass || !this.shadowRoot) return;
+    const c = this._config, hass = this._hass;
+    const ids = [c.installed, c.average, c.price, c.capacity].filter((x) => typeof x === "string" && x.includes("."));
+    const sig = `${c.theme}|${hass.themes?.darkMode}|${ids.map((id) => hass.states?.[id]?.last_updated || "-").join("|")}|${this._fetched}|${Math.floor(Date.now() / 3600000)}`;
+    if (!force && sig === this._sig) return;
+    this._sig = sig;
+    const theme = themeClass(c.theme, hass);
+    const now = new Date();
+    const installed = BOTTLE.installed(hass, c.installed);
+    if (!installed) {
+      this.shadowRoot.innerHTML = `${STYLE}${GAS_STYLE}${BOTTLE_STYLE}<ha-card class="${theme} gas"${hcHpStyle(c)}><div class="empty">
+        <strong>Date d'installation introuvable : ${esc(c.installed)}</strong>
+        <span>La carte lit un <code>input_datetime</code> mis à jour à chaque changement de bouteille
+        (par exemple par une automatisation déclenchée par un tag NFC).</span></div></ha-card>`;
+      return;
+    }
+    const capacity = BOTTLE.value(hass, c.capacity) ?? 10;
+    const price = BOTTLE.value(hass, c.price);
+    const bottles = BOTTLE.bottles(this._changes || [], installed, now);
+    const done = bottles.filter((b) => !b.current);
+    // durée moyenne : capteur, sinon d'après le calendrier
+    const avg = BOTTLE.value(hass, c.average) ?? (done.length ? done.reduce((s, b) => s + b.days, 0) / done.length : null);
+    const days = (now - installed) / 86400000;
+    const m = {
+      days, avg, capacity, price, bottles, done,
+      pct: avg ? Math.max(0, 1 - days / avg) : null,
+      end: avg ? new Date(installed.getTime() + avg * 86400000) : null,
+      left: avg ? Math.max(0, avg - days) : null,
+      perDay: avg ? (capacity * 1000) / avg : null,
+      perMonth: avg && price !== null ? (price / avg) * 30.44 : null,
+    };
+    this.shadowRoot.innerHTML = `${STYLE}${GAS_STYLE}${BOTTLE_STYLE}<ha-card class="${theme} gas"${hcHpStyle(c)}>
+      ${this._header(installed)}${this._hero(m)}${this._tiles(m)}${this._history(m)}${this._footer(m)}</ha-card>`;
+  }
+
+  _header(installed) {
+    const c = this._config;
+    const sub = [c.label, `installée le ${installed.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`].filter(Boolean).join(" · ");
+    return `<header><div class="brand">${BOTTLE_ICON}
+      <div><div class="title">${esc(c.title || BOTTLE_DEFAULTS.title)}</div><div class="sub">${esc(sub)}</div></div></div></header>`;
+  }
+
+  _hero(m) {
+    const warn = m.left !== null && m.left <= Number(this._config.warn_days || 0);
+    const gauge = m.pct !== null
+      ? `<div class="bt-gauge${warn ? " low" : ""}"><i style="width:${(m.pct * 100).toFixed(1)}%"></i></div>
+         <div class="split-l"><span>≈ ${fmt(m.capacity * m.pct, 1)} kg restants sur ${fmt(m.capacity, 0)} kg</span><span>${fmt(m.pct * 100, 0)} %</span></div>`
+      : `<div class="split wait">Estimation du gaz restant après le prochain changement de bouteille : il faut au moins une bouteille terminée pour connaître sa durée.</div>`;
+    return `<section class="hero">
+      <div>
+        <div class="hero-l">En service depuis</div>
+        <div class="hero-v">${fmt(m.days, 0)}<span>jours</span></div>
+        ${m.avg ? (m.days > m.avg
+          ? `<div class="evo up">au-delà de la moyenne (${fmt(m.avg, 0)} jours)</div>`
+          : `<div class="hero-p">moyenne : ${fmt(m.avg, 0)} jours</div>`) : ""}
+      </div>
+      <div class="hero-r">
+        ${m.left !== null
+          ? `<div class="peak">${fmt(m.left, 0)}<span>jours</span></div><div class="cost-l">${warn ? "bientôt vide" : "restants environ"}</div>`
+          : `<div class="peak">${fmt(m.capacity, 0)}<span>kg</span></div><div class="cost-l">capacité de la bouteille</div>`}
+      </div>
+      <div class="split">${gauge}</div>
+    </section>`;
+  }
+
+  _tiles(m) {
+    const later = "connue au prochain changement";
+    const tile = (label, value, unit, notes) => `<div class="tile">
+      <div class="tile-l">${label}</div><div class="tile-v">${value}${unit ? `<span>${unit}</span>` : ""}</div>
+      ${notes.filter(Boolean).length ? `<div class="tile-n">${notes.filter(Boolean).join("<br>")}</div>` : ""}</div>`;
+    const endTxt = m.end ? m.end.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }).replace(".", "") : "—";
+    return `<section class="tiles">
+      ${tile("Durée moyenne", m.avg ? fmt(m.avg, 0) : "—", m.avg ? "jours" : "", [m.done.length ? `sur ${m.done.length} bouteille${m.done.length > 1 ? "s" : ""}` : later])}
+      ${tile("Fin estimée", esc(endTxt), "", [m.end ? (m.left > 0 ? `dans ${fmt(m.left, 0)} jours` : "dépassée : bouteille à changer ?") : later])}
+      ${tile("Consommation", m.perDay !== null ? fmt(m.perDay, 0) : "—", m.perDay !== null ? "g/jour" : "", [m.perDay !== null ? `≈ ${fmt((m.perDay * 30.44) / 1000, 1)} kg par mois` : later])}
+      ${m.perMonth !== null
+        ? tile("Coût", euro(m.perMonth), "/mois", [`${euro(m.price)} la recharge`, `≈ ${euro(m.perMonth * 12)} par an`])
+        : tile("Recharge", m.price !== null ? euro(m.price) : "—", "", [m.price !== null ? "coût par mois " + later : "prix non renseigné"])}
+    </section>`;
+  }
+
+  _history(m) {
+    if (!this._config.calendar) return "";
+    const rows = m.bottles.slice(0, this._config.history).map((b) => `<div class="bill">
+      <span>${esc(b.start.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }).replace(".", ""))} → ${b.current ? "en service" : esc(b.end.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }).replace(".", ""))}</span>
+      <b class="${b.current ? "now" : ""}">${fmt(b.days, 0)} jours</b></div>`).join("");
+    return `<section class="bills"><div class="chart-h"><span>Bouteilles</span></div>${rows}${this._calError ? `<div class="gas-err">Calendrier illisible : ${esc(this._calError)}</div>` : ""}</section>`;
+  }
+
+  _footer(m) {
+    return `<footer>${m.avg ? `Estimations d'après la durée moyenne${m.done.length ? ` de ${m.done.length} bouteille${m.done.length > 1 ? "s" : ""}` : ""}` : "Durée comptée depuis l'installation de la bouteille"} ; la consommation réelle varie avec l'usage.</footer>`;
+  }
+}
+
+const BOTTLE_STYLE = `<style>
+.brand .cyl { fill: var(--med-gas); } .brand .band { fill: var(--med-gas-core); }
+.bt-gauge { height: 10px; border-radius: 6px; background: var(--med-line); overflow: hidden; margin-top: 4px; }
+.bt-gauge i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--med-gas), var(--med-gas-core)); }
+.bt-gauge.low i { background: var(--t-red); }
+.bills { margin: 14px 12px 0; }
+.bill { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--med-line);
+  border-radius: 10px; font-size: .85rem; margin-top: 6px; }
+.bill span { color: var(--med-muted); }
+.bill b.now { color: var(--med-gas); }
+</style>`;
+
 /* ------------------------------------------------------------ mini Tempo */
 
 const TEMPO_DEFAULTS = {
@@ -1940,6 +2161,36 @@ const GAS_LABELS = {
 };
 const ContentCardLinkyNewGazparEditor = makeEditor(GAS_SCHEMA, GAS_LABELS, GAS_DEFAULTS);
 
+const BOTTLE_SCHEMA = [
+  { name: "installed", required: true, selector: { entity: { domain: "input_datetime" } } },
+  { name: "average", selector: { entity: { domain: "sensor" } } },
+  { name: "price", selector: { entity: { domain: ["input_number", "sensor"] } } },
+  { name: "capacity", selector: { entity: { domain: ["input_number", "sensor"] } } },
+  { name: "calendar", selector: { entity: { domain: "calendar" } } },
+  { name: "calendar_summary", selector: { text: {} } },
+  { name: "title", selector: { text: {} } },
+  { name: "label", selector: { text: {} } },
+  { name: "history", selector: { number: { min: 1, max: 20, step: 1, mode: "box" } } },
+  { name: "warn_days", selector: { number: { min: 0, max: 60, step: 1, mode: "box", unit_of_measurement: "jours" } } },
+  THEME_SELECT,
+  SCHEMA.find((s) => s.name === "font_size"),
+].filter(Boolean);
+const BOTTLE_LABELS = {
+  installed: "Date d'installation de la bouteille (input_datetime, mis à jour à chaque changement)",
+  average: "Durée moyenne d'une bouteille (capteur, facultatif : sinon calculée d'après le calendrier)",
+  price: "Prix d'une recharge (input_number, ou un nombre en YAML)",
+  capacity: "Capacité de la bouteille en kg (input_number, ou un nombre en YAML ; 10 par défaut)",
+  calendar: "Calendrier où chaque changement est noté (facultatif : historique des bouteilles)",
+  calendar_summary: "Titre des événements de changement dans le calendrier",
+  title: "Titre",
+  label: "Bouteille (texte sous le titre, par exemple Butane 10 kg)",
+  history: "Bouteilles affichées dans l'historique",
+  warn_days: "Alerte « bientôt vide » (jours restants)",
+  theme: "Couleurs de la carte",
+  font_size: "Taille du texte",
+};
+const ContentCardLinkyNewBouteilleEditor = makeEditor(BOTTLE_SCHEMA, BOTTLE_LABELS, BOTTLE_DEFAULTS);
+
 /* ---------------------------------------------------------- enregistrement */
 
 if (typeof customElements !== "undefined") {
@@ -1955,6 +2206,8 @@ if (typeof customElements !== "undefined") {
   define("content-card-linky-new-tempo-editor", ContentCardLinkyNewTempoEditor);
   define("content-card-linky-new-gazpar", ContentCardLinkyNewGazpar);
   define("content-card-linky-new-gazpar-editor", ContentCardLinkyNewGazparEditor);
+  define("content-card-linky-new-bouteille", ContentCardLinkyNewBouteille);
+  define("content-card-linky-new-bouteille-editor", ContentCardLinkyNewBouteilleEditor);
   window.customCards = window.customCards || [];
   const register = (type, name, description) => {
     if (!window.customCards.some((c) => c.type === type)) window.customCards.push({ type, name, description, preview: true });
@@ -1975,7 +2228,12 @@ if (typeof customElements !== "undefined") {
     "Carte Enedis Linky New · Gazpar",
     "Consommation de gaz du compteur Gazpar (GRDF) : jour, semaine, mois, année, coût, avec l'intégration home-assistant-gazpar.",
   );
+  register(
+    "content-card-linky-new-bouteille",
+    "Carte Enedis Linky New · Bouteille de gaz",
+    "Bouteille de gaz (butane, propane) : jours en service, gaz restant estimé, fin estimée, coût, historique des bouteilles.",
+  );
   console.info(`%c CARTE-ENEDIS-LINKY-NEW %c ${CARD_VERSION} `, "background:#96d21f;color:#1a2434;font-weight:700", "background:#1d93e3;color:#fff");
 }
 
-if (typeof module !== "undefined") module.exports = { MED, GAS };
+if (typeof module !== "undefined") module.exports = { MED, GAS, BOTTLE };
