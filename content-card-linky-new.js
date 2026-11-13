@@ -28,7 +28,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.10.0-beta.2";
+const CARD_VERSION = "0.10.0-beta.3";
 
 /* ---------------------------------------------------------------- données */
 
@@ -1647,7 +1647,8 @@ const PLEINS = {
       odometer: kms.length ? kms[kms.length - 1].km : null,
       conso: dist > 0 ? (litresConso / dist) * 100 : null,
       perKm: dist > 0 ? (sumCost(f.slice(1)) / dist) : null,
-      perDay: days ? cost / days : null,
+      // budget par jour : seulement après 7 jours de suivi et au moins deux pleins (sinon il ne veut rien dire)
+      perDay: days && days >= 7 && f.length > 1 ? cost / days : null,
       monthCost: sumCost(month), monthLitres: month.reduce((s, x) => s + x.litres, 0), monthCount: month.length,
       yearCost: sumCost(year), yearLitres: year.reduce((s, x) => s + x.litres, 0), yearCount: year.length,
       months: months.reverse(), byFuel,
@@ -1780,7 +1781,7 @@ class ContentCardLinkyNewPleins extends HTMLElement {
       ${tile(cap(month), euro(s.monthCost), "", [`${fmt(s.monthLitres, 0)} L · ${s.monthCount} plein${s.monthCount > 1 ? "s" : ""}`])}
       ${tile(`Année ${now.getFullYear()}`, euro(s.yearCost), "", [`${fmt(s.yearLitres, 0)} L · ${s.yearCount} plein${s.yearCount > 1 ? "s" : ""}`, avgMonth !== null ? `≈ ${euro(avgMonth)} par mois` : ""])}
       ${tile("Kilomètres", s.km !== null ? fmt(s.km, 0) : "—", s.km !== null ? "km" : "", [s.odometer !== null ? `compteur ${fmt(s.odometer, 0)} km` : "", s.perKm !== null ? `${fmt(s.perKm * 100, 2)} € aux 100 km` : ""])}
-      ${tile("Budget", s.perDay !== null ? euro(s.perDay) : "—", s.perDay !== null ? "/jour" : "", [`${euro(s.cost)} au total`, `${fmt(s.litres, 0)} L en tout`])}
+      ${tile("Budget", s.perDay !== null ? euro(s.perDay) : "—", s.perDay !== null ? "/jour" : "", [s.perDay === null ? "par jour : connu après quelques jours" : "", `${euro(s.cost)} au total`, `${fmt(s.litres, 0)} L en tout`])}
     </section>`;
   }
 
