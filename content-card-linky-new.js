@@ -28,7 +28,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.10.0-beta.3";
+const CARD_VERSION = "0.10.0-beta.4";
 
 /* ---------------------------------------------------------------- données */
 
@@ -1613,20 +1613,31 @@ const PLEINS = {
    *  sur les km depuis le plein N-1, avec le carburant mis au plein N-1. */
   stats(fills, now) {
     const f = [...fills].sort((a, b) => a.date - b.date);
-    const kms = f.filter((x) => x.km !== null);
-    let litresConso = 0, dist = 0;
+    // consommation de plein à plein, sur la chaîne des kilométrages cohérents :
+    // un kilométrage absent ou plus bas que le précédent est une erreur de saisie (signalée dans la liste),
+    // ses litres sont reportés sur le plein suivant ; une conso hors 3–30 L/100 km n'est pas comptée.
+    let litresConso = 0, costConso = 0, dist = 0, ref = null, firstRef = null, pendL = 0, pendCost = 0, multi = false;
     const byFuel = {};
     const fuelStat = (k) => (byFuel[k] ||= { count: 0, litres: 0, cost: 0, consoL: 0, consoKm: 0 });
-    f.forEach((x, i) => {
+    f.forEach((x) => {
       const s = fuelStat(x.fuel || "?");
       s.count += 1; s.litres += x.litres; s.cost += x.total || 0;
-      const prev = f[i - 1];
-      if (prev && prev.km !== null && x.km !== null && x.km > prev.km) {
-        const dd = x.km - prev.km;
-        litresConso += x.litres; dist += dd;
-        const ps = fuelStat(prev.fuel || "?");
-        ps.consoL += x.litres; ps.consoKm += dd;
+      x.kmError = false;
+      if (ref === null) {
+        if (x.km !== null) ref = firstRef = x;
+        return;
       }
+      if (x.km === null || x.km <= ref.km) {
+        x.kmError = x.km !== null;
+        pendL += x.litres; pendCost += x.total || 0; multi = true;
+        return;
+      }
+      const dd = x.km - ref.km, L = pendL + x.litres, c = (L / dd) * 100;
+      if (c >= 3 && c <= 30) {
+        litresConso += L; costConso += pendCost + (x.total || 0); dist += dd;
+        if (!multi) { const ps = fuelStat(ref.fuel || "?"); ps.consoL += L; ps.consoKm += dd; }
+      }
+      ref = x; pendL = 0; pendCost = 0; multi = false;
     });
     const cost = f.reduce((s, x) => s + (x.total || 0), 0);
     const litres = f.reduce((s, x) => s + x.litres, 0);
@@ -1643,10 +1654,10 @@ const PLEINS = {
     }
     return {
       fills: f, first, last, cost, litres, days,
-      km: kms.length > 1 ? kms[kms.length - 1].km - kms[0].km : null,
-      odometer: kms.length ? kms[kms.length - 1].km : null,
+      km: ref && ref !== firstRef ? ref.km - firstRef.km : null,
+      odometer: ref ? ref.km : null,
       conso: dist > 0 ? (litresConso / dist) * 100 : null,
-      perKm: dist > 0 ? (sumCost(f.slice(1)) / dist) : null,
+      perKm: dist > 0 ? costConso / dist : null,
       // budget par jour : seulement après 7 jours de suivi et au moins deux pleins (sinon il ne veut rien dire)
       perDay: days && days >= 7 && f.length > 1 ? cost / days : null,
       monthCost: sumCost(month), monthLitres: month.reduce((s, x) => s + x.litres, 0), monthCount: month.length,
@@ -1739,7 +1750,7 @@ class ContentCardLinkyNewPleins extends HTMLElement {
     const s = PLEINS.stats(this._events.filter((e) => e.car === this._car), new Date());
     this.shadowRoot.innerHTML = `${head}<ha-card class="${theme} gas"${hcHpStyle(c)}>
       ${this._header(s)}${!c.car && cars.length > 1 ? this._tabs(cars) : ""}${this._hero(s)}${this._tiles(s)}${this._fuels(s)}${this._chart(s)}${this._history(s)}
-      <footer>Consommation calculée de plein à plein : remplir le réservoir à chaque plein.</footer></ha-card>`;
+      <footer>${s.fills.some((x) => x.kmError) ? "⚠ kilométrage plus bas que le plein précédent : corriger l'événement dans le calendrier. " : ""}Consommation calculée de plein à plein : remplir le réservoir à chaque plein.</footer></ha-card>`;
   }
 
   _header(s) {
@@ -1812,7 +1823,7 @@ class ContentCardLinkyNewPleins extends HTMLElement {
 
   _history(s) {
     const rows = [...s.fills].reverse().slice(0, this._config.history).map((x) => `<div class="bill">
-      <span><i class="pl-dot" style="background:${FUEL_COLORS[x.fuel] || "var(--med-gas)"}"></i>${esc(x.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }).replace(".", ""))} · ${fmt(x.litres, x.litres % 1 ? 1 : 0)} L ${esc(x.fuel)}${x.km !== null ? ` · ${fmt(x.km, 0)} km` : ""}</span>
+      <span><i class="pl-dot" style="background:${FUEL_COLORS[x.fuel] || "var(--med-gas)"}"></i>${esc(x.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }).replace(".", ""))} · ${fmt(x.litres, x.litres % 1 ? 1 : 0)} L ${esc(x.fuel)}${x.km !== null ? ` · ${x.kmError ? "⚠ " : ""}${fmt(x.km, 0)} km` : ""}</span>
       <b>${x.total !== null ? euro(x.total) : "—"}</b></div>`).join("");
     return `<section class="bills"><div class="chart-h"><span>Derniers pleins</span></div>${rows}</section>`;
   }
