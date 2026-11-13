@@ -47,6 +47,7 @@ Elle reprend l'esprit de [content-card-linky](https://github.com/MyElectricalDat
 
 **Nouvelle carte**
 
+- **Carte Pleins** (`custom:content-card-linky-new-pleins`) : pleins de carburant de chaque voiture, notés au calendrier par un tag NFC : kilomètres, consommation moyenne et par carburant (E85, SP95, SP98…), litres, budget par plein, par jour, par mois et par année. Voir [Carte Pleins](#carte-pleins).
 - **Carte Bouteille de gaz** (`custom:content-card-linky-new-bouteille`) : bouteille de gaz (butane, propane) suivie par un tag NFC bipé à chaque changement : jours en service, gaz restant estimé, fin estimée, consommation, coût et historique des bouteilles. Voir [Carte Bouteille de gaz](#carte-bouteille-de-gaz).
 
 ## Nouveautés de la 0.9.0
@@ -313,6 +314,39 @@ label: Butane 10 kg
 | `font_size` | `100` | Taille du texte, de 70 à 150 % |
 
 > Les estimations (gaz restant, fin, consommation, coût) apparaissent **après la première bouteille terminée** : il faut une durée complète pour connaître la consommation. Elles supposent un usage régulier.
+
+## Carte Pleins
+
+`custom:content-card-linky-new-pleins` suit les **pleins de carburant** de vos voitures, dans le même style. Pas de ressource à ajouter.
+
+Elle lit les événements « Plein <voiture> » d'un calendrier, un par plein, avec dans la description les litres, le carburant, le prix au litre, le total et le kilométrage (« 42.5 L · E85 · 0.869 €/L · 36.93 € · 162000 km »). Ils sont écrits par une automatisation, par exemple déclenchée par un tag NFC collé dans la voiture.
+
+- **Onglets** par voiture (ou une seule voiture avec `car`).
+- **Dernier plein** : litres, carburant, total, prix au litre, kilométrage, et **consommation moyenne** en L/100 km.
+- **Tuiles** : mois en cours, année (et moyenne par mois), kilomètres parcourus et coût aux 100 km, budget par jour.
+- **Par carburant** : nombre de pleins, litres, dépense et consommation de chaque carburant, pour comparer l'E85 au SP95 ou au SP98.
+- **Graphique** des dépenses des 3 à 12 derniers mois et **derniers pleins**.
+
+<p align="center"><img src="https://raw.githubusercontent.com/Marlboro62/content-card-linky-new/main/images/pleins-demo.png" alt="Carte Pleins avec des données simulées" width="360"></p>
+<p align="center"><sub>Carte Pleins, données simulées.</sub></p>
+
+```yaml
+type: custom:content-card-linky-new-pleins
+calendar: calendar.home
+```
+
+| Option | Défaut | Description |
+|---|---|---|
+| `calendar` | `calendar.home` | Calendrier où chaque plein est noté |
+| `prefix` | `Plein ` | Début du titre des événements, suivi du nom de la voiture |
+| `car` | aucun | Une seule voiture ; sans elle, un onglet par voiture |
+| `title` | `Pleins` | Titre affiché |
+| `months` | `6` | Mois dans le graphique des dépenses (3 à 12) |
+| `history` | `5` | Derniers pleins affichés |
+| `theme` | `v2` | `v2`, `auto` ou `ha`, comme la carte de consommation |
+| `font_size` | `100` | Taille du texte, de 70 à 150 % |
+
+> La consommation se calcule **de plein à plein** : remplir le réservoir à chaque fois. Les litres d'un plein ont été consommés depuis le plein précédent, avec le carburant mis à ce plein précédent : c'est lui qui reçoit la consommation dans « Par carburant ».
 
 ## À savoir
 

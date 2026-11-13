@@ -22,10 +22,13 @@
  * Bouteille de gaz (même fichier) : type: custom:content-card-linky-new-bouteille
  * installed: input_datetime.bouteille_gaz_installee_le   (mis à jour à chaque changement de bouteille)
  *
+ * Pleins de carburant (même fichier) : type: custom:content-card-linky-new-pleins
+ * calendar: calendar.home      (un événement « Plein <voiture> » par plein, écrit par l'automatisation du tag NFC)
+ *
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.10.0-beta.1";
+const CARD_VERSION = "0.10.0-beta.2";
 
 /* ---------------------------------------------------------------- données */
 
@@ -1571,6 +1574,261 @@ const BOTTLE_STYLE = `<style>
 .bill b.now { color: var(--med-gas); }
 </style>`;
 
+/* ------------------------------------------------------------------ pleins */
+
+/** Pleins de carburant notés au calendrier (un événement « Plein <voiture> » par plein, écrit par
+ *  l'automatisation du tag NFC) : description « 42.5 L · E85 · 0.869 €/L · 36.93 € · 162000 km ». */
+const FUEL_COLORS = { SP98: "#FF5252", SP95: "#40C4FF", E10: "#69F0AE", E85: "#FF9100", Gazole: "#FFD740", GPL: "#B388FF" };
+
+const PLEINS_DEFAULTS = {
+  title: "Pleins",
+  calendar: "calendar.home",
+  prefix: "Plein ",
+  car: "",
+  months: 6,
+  history: 5,
+  theme: "v2",
+  font_size: 100,
+};
+
+const PLEINS = {
+  /** Un plein à partir d'un événement du calendrier, ou null s'il n'est pas lisible. */
+  parse(ev, prefix) {
+    const summary = String(ev.summary || "");
+    if (!summary.toLowerCase().startsWith(prefix.toLowerCase())) return null;
+    const car = summary.slice(prefix.length).trim();
+    const d = String(ev.description || "").replace(/,/g, ".");
+    const num = (re) => { const m = re.exec(d); return m ? Number(m[1]) : null; };
+    const litres = num(/([\d.]+)\s*L(?![/\w])/);
+    const price = num(/([\d.]+)\s*€\/L/);
+    const total = num(/([\d.]+)\s*€(?!\/)/);
+    const km = num(/(\d+)\s*km(?!\/)/);
+    const fuel = (/·\s*(SP98|SP95|E10|E85|Gazole|GPL)\s*·/.exec(d) || [])[1] || "";
+    const date = new Date(ev.start?.dateTime || ev.start?.date || ev.start);
+    if (!car || Number.isNaN(date.getTime()) || litres === null) return null;
+    return { car, date, litres, price, total: total ?? (price !== null ? litres * price : null), km, fuel };
+  },
+
+  /** Statistiques d'une voiture. Consommation « plein à plein » : les litres du plein N ont été brûlés
+   *  sur les km depuis le plein N-1, avec le carburant mis au plein N-1. */
+  stats(fills, now) {
+    const f = [...fills].sort((a, b) => a.date - b.date);
+    const kms = f.filter((x) => x.km !== null);
+    let litresConso = 0, dist = 0;
+    const byFuel = {};
+    const fuelStat = (k) => (byFuel[k] ||= { count: 0, litres: 0, cost: 0, consoL: 0, consoKm: 0 });
+    f.forEach((x, i) => {
+      const s = fuelStat(x.fuel || "?");
+      s.count += 1; s.litres += x.litres; s.cost += x.total || 0;
+      const prev = f[i - 1];
+      if (prev && prev.km !== null && x.km !== null && x.km > prev.km) {
+        const dd = x.km - prev.km;
+        litresConso += x.litres; dist += dd;
+        const ps = fuelStat(prev.fuel || "?");
+        ps.consoL += x.litres; ps.consoKm += dd;
+      }
+    });
+    const cost = f.reduce((s, x) => s + (x.total || 0), 0);
+    const litres = f.reduce((s, x) => s + x.litres, 0);
+    const first = f[0], last = f[f.length - 1];
+    const days = first ? Math.max(1, (now - first.date) / 86400000) : null;
+    const sameMonth = (x) => x.date.getFullYear() === now.getFullYear() && x.date.getMonth() === now.getMonth();
+    const sumCost = (arr) => arr.reduce((s, x) => s + (x.total || 0), 0);
+    const month = f.filter(sameMonth), year = f.filter((x) => x.date.getFullYear() === now.getFullYear());
+    const months = [];
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const rows = f.filter((x) => x.date.getFullYear() === d.getFullYear() && x.date.getMonth() === d.getMonth());
+      months.push({ date: d, cost: sumCost(rows), litres: rows.reduce((s, x) => s + x.litres, 0), count: rows.length });
+    }
+    return {
+      fills: f, first, last, cost, litres, days,
+      km: kms.length > 1 ? kms[kms.length - 1].km - kms[0].km : null,
+      odometer: kms.length ? kms[kms.length - 1].km : null,
+      conso: dist > 0 ? (litresConso / dist) * 100 : null,
+      perKm: dist > 0 ? (sumCost(f.slice(1)) / dist) : null,
+      perDay: days ? cost / days : null,
+      monthCost: sumCost(month), monthLitres: month.reduce((s, x) => s + x.litres, 0), monthCount: month.length,
+      yearCost: sumCost(year), yearLitres: year.reduce((s, x) => s + x.litres, 0), yearCount: year.length,
+      months: months.reverse(), byFuel,
+    };
+  },
+};
+
+const PUMP_ICON = `<svg viewBox="0 0 32 32" aria-hidden="true"><path class="cyl" d="M7 5.5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v22H7z"/><path class="band" d="M10 7h7v6h-7z"/><path class="cyl" d="M5.5 27h16v2.5h-16z"/><path class="hose" d="M20 10.5l3.5 3v9.5a1.6 1.6 0 0 0 3.2 0V11l-3.5-3.5"/></svg>`;
+
+class ContentCardLinkyNewPleins extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("content-card-linky-new-pleins-editor");
+  }
+
+  static getStubConfig() {
+    return { calendar: PLEINS_DEFAULTS.calendar };
+  }
+
+  setConfig(config) {
+    if (!config) throw new Error("Configuration de la carte manquante.");
+    this._config = { ...PLEINS_DEFAULTS, ...config, months: Number(config.months || PLEINS_DEFAULTS.months), history: Number(config.history || PLEINS_DEFAULTS.history) };
+    this._events = null;
+    this._fetched = 0;
+    this._car = this._config.car || null;
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      this.shadowRoot.addEventListener("click", (ev) => {
+        const t = ev.target.closest?.("[data-car]");
+        if (!t) return;
+        this._car = t.dataset.car;
+        this._render();
+      });
+    }
+    this._render();
+  }
+
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    this._load();
+    if (first) this._render();
+  }
+
+  getCardSize() {
+    return 7;
+  }
+
+  /** Pleins lus dans le calendrier : au chargement, toutes les 10 minutes, et quand un plein vient d'être enregistré. */
+  async _load() {
+    const c = this._config;
+    if (!c?.calendar || !this._hass?.callApi || this._loading) return;
+    const stamp = this._hass.states?.["input_text.plein_etape"]?.last_updated || "";
+    if (this._events && this._stamp === stamp && Date.now() - this._fetched < 600000) return;
+    this._loading = true;
+    try {
+      const end = new Date(Date.now() + 86400000), start = new Date(end.getTime() - 5 * 365 * 86400000);
+      const events = await this._hass.callApi("GET", `calendars/${c.calendar}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      this._events = (Array.isArray(events) ? events : []).map((e) => PLEINS.parse(e, c.prefix || PLEINS_DEFAULTS.prefix)).filter(Boolean);
+      this._error = null;
+    } catch (err) {
+      this._events = [];
+      this._error = String(err?.body?.message || err?.message || err || "erreur");
+    }
+    this._fetched = Date.now();
+    this._stamp = stamp;
+    this._loading = false;
+    this._render();
+  }
+
+  _render() {
+    if (!this._config || !this.shadowRoot) return;
+    const c = this._config;
+    const theme = themeClass(c.theme, this._hass);
+    const head = `${STYLE}${GAS_STYLE}${BOTTLE_STYLE}${PLEINS_STYLE}`;
+    if (!this._events) {
+      this.shadowRoot.innerHTML = `${head}<ha-card class="${theme} gas"${hcHpStyle(c)}><div class="empty"><span>Lecture des pleins…</span></div></ha-card>`;
+      return;
+    }
+    const cars = [...new Set(this._events.map((e) => e.car))].sort();
+    if (!this._car || !cars.includes(this._car)) this._car = c.car && cars.includes(c.car) ? c.car : cars[0];
+    if (!cars.length) {
+      this.shadowRoot.innerHTML = `${head}<ha-card class="${theme} gas"${hcHpStyle(c)}>${this._header(null)}<div class="empty">
+        <strong>Aucun plein dans ${esc(c.calendar)}</strong>
+        <span>La carte lit les événements « ${esc(c.prefix)}&lt;voiture&gt; » écrits à chaque plein (automatisation du tag NFC).</span>
+        ${this._error ? `<span>Calendrier illisible : ${esc(this._error)}</span>` : ""}</div></ha-card>`;
+      return;
+    }
+    const s = PLEINS.stats(this._events.filter((e) => e.car === this._car), new Date());
+    this.shadowRoot.innerHTML = `${head}<ha-card class="${theme} gas"${hcHpStyle(c)}>
+      ${this._header(s)}${!c.car && cars.length > 1 ? this._tabs(cars) : ""}${this._hero(s)}${this._tiles(s)}${this._fuels(s)}${this._chart(s)}${this._history(s)}
+      <footer>Consommation calculée de plein à plein : remplir le réservoir à chaque plein.</footer></ha-card>`;
+  }
+
+  _header(s) {
+    const c = this._config;
+    const sub = s ? `${this._car} · ${s.fills.length} plein${s.fills.length > 1 ? "s" : ""} depuis le ${s.first.date.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}` : "";
+    return `<header><div class="brand">${PUMP_ICON}
+      <div><div class="title">${esc(c.title || PLEINS_DEFAULTS.title)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div></div></header>`;
+  }
+
+  _tabs(cars) {
+    return `<nav class="pl-tabs">${cars.map((x) => `<button data-car="${esc(x)}" class="${x === this._car ? "on" : ""}">${esc(x)}</button>`).join("")}</nav>`;
+  }
+
+  _hero(s) {
+    const l = s.last;
+    const col = FUEL_COLORS[l.fuel] || "var(--med-gas)";
+    return `<section class="hero">
+      <div>
+        <div class="hero-l">Dernier plein · ${esc(l.date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }))}</div>
+        <div class="hero-v">${fmt(l.litres, l.litres % 1 ? 1 : 0)}<span>L</span> <i class="pl-dot" style="background:${col}"></i><span class="pl-fuel">${esc(l.fuel)}</span></div>
+        <div class="hero-p">${l.total !== null ? euro(l.total) : "—"}${l.price !== null ? ` · ${fmt(l.price, 3)} €/L` : ""}${l.km !== null ? ` · ${fmt(l.km, 0)} km` : ""}</div>
+      </div>
+      <div class="hero-r">
+        ${s.conso !== null
+          ? `<div class="peak">${fmt(s.conso, 1)}<span>L/100 km</span></div><div class="cost-l">consommation moyenne</div>`
+          : `<div class="peak">—</div><div class="cost-l">consommation au prochain plein</div>`}
+      </div>
+    </section>`;
+  }
+
+  _tiles(s) {
+    const now = new Date();
+    const month = now.toLocaleDateString("fr-FR", { month: "long" });
+    const tile = (label, value, unit, notes) => `<div class="tile">
+      <div class="tile-l">${label}</div><div class="tile-v">${value}${unit ? `<span>${unit}</span>` : ""}</div>
+      ${notes.filter(Boolean).length ? `<div class="tile-n">${notes.filter(Boolean).join("<br>")}</div>` : ""}</div>`;
+    const avgMonth = s.days && s.days >= 28 ? (s.cost / s.days) * 30.44 : null;
+    return `<section class="tiles">
+      ${tile(cap(month), euro(s.monthCost), "", [`${fmt(s.monthLitres, 0)} L · ${s.monthCount} plein${s.monthCount > 1 ? "s" : ""}`])}
+      ${tile(`Année ${now.getFullYear()}`, euro(s.yearCost), "", [`${fmt(s.yearLitres, 0)} L · ${s.yearCount} plein${s.yearCount > 1 ? "s" : ""}`, avgMonth !== null ? `≈ ${euro(avgMonth)} par mois` : ""])}
+      ${tile("Kilomètres", s.km !== null ? fmt(s.km, 0) : "—", s.km !== null ? "km" : "", [s.odometer !== null ? `compteur ${fmt(s.odometer, 0)} km` : "", s.perKm !== null ? `${fmt(s.perKm * 100, 2)} € aux 100 km` : ""])}
+      ${tile("Budget", s.perDay !== null ? euro(s.perDay) : "—", s.perDay !== null ? "/jour" : "", [`${euro(s.cost)} au total`, `${fmt(s.litres, 0)} L en tout`])}
+    </section>`;
+  }
+
+  _fuels(s) {
+    const rows = Object.entries(s.byFuel).filter(([k]) => k !== "?").sort((a, b) => b[1].litres - a[1].litres);
+    if (!rows.length) return "";
+    return `<section class="bills"><div class="chart-h"><span>Par carburant</span></div>${rows.map(([k, v]) => `<div class="bill">
+      <span><i class="pl-dot" style="background:${FUEL_COLORS[k] || "var(--med-gas)"}"></i>${esc(k)} · ${v.count} plein${v.count > 1 ? "s" : ""} · ${fmt(v.litres, 0)} L · ${euro(v.cost)}</span>
+      <b>${v.consoKm > 0 ? `${fmt((v.consoL / v.consoKm) * 100, 1)} L/100` : "—"}</b></div>`).join("")}</section>`;
+  }
+
+  _chart(s) {
+    const n = Math.max(3, Math.min(12, this._config.months));
+    const months = s.months.slice(-n);
+    const max = Math.max(1, ...months.map((m) => m.cost)) * 1.1;
+    const H = 100, slot = 100 / n, w = slot * 0.6;
+    const bars = months.map((m, k) => {
+      const h = (m.cost / max) * H;
+      return m.cost > 0 ? `<rect class="pl-bar" x="${k * slot + (slot - w) / 2}" y="${H - h}" width="${w}" height="${h}"/>` : "";
+    }).join("");
+    const labels = months.map((m) => `<div class="day"><span>${esc(m.date.toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""))}</span><b>${m.cost > 0 ? Math.round(m.cost) : "·"}</b></div>`).join("");
+    return `<section class="chart">
+      <div class="chart-h"><span>Dépenses des ${n} derniers mois (€)</span></div>
+      <svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" role="img" aria-label="Dépenses de carburant par mois">${bars}</svg>
+      <div class="days" style="grid-template-columns:repeat(${n},1fr)">${labels}</div>
+    </section>`;
+  }
+
+  _history(s) {
+    const rows = [...s.fills].reverse().slice(0, this._config.history).map((x) => `<div class="bill">
+      <span><i class="pl-dot" style="background:${FUEL_COLORS[x.fuel] || "var(--med-gas)"}"></i>${esc(x.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }).replace(".", ""))} · ${fmt(x.litres, x.litres % 1 ? 1 : 0)} L ${esc(x.fuel)}${x.km !== null ? ` · ${fmt(x.km, 0)} km` : ""}</span>
+      <b>${x.total !== null ? euro(x.total) : "—"}</b></div>`).join("");
+    return `<section class="bills"><div class="chart-h"><span>Derniers pleins</span></div>${rows}</section>`;
+  }
+}
+
+const PLEINS_STYLE = `<style>
+.brand .hose { fill: none; stroke: var(--med-gas); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pl-tabs { display: flex; gap: 8px; padding: 0 18px 8px; flex-wrap: wrap; }
+.pl-tabs button { all: unset; cursor: pointer; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--med-line);
+  background: var(--med-surface); font-size: .85rem; color: var(--med-muted); }
+.pl-tabs button.on { color: var(--med-text); border-color: var(--med-gas); }
+.pl-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 6px 0 2px; vertical-align: middle; }
+.hero-v .pl-dot { width: 12px; height: 12px; margin-left: 10px; }
+.hero-v .pl-fuel { font-size: 1rem; color: var(--med-text); font-weight: 600; margin-left: 0; }
+.chart rect.pl-bar { fill: var(--med-gas); }
+</style>`;
+
 /* ------------------------------------------------------------ mini Tempo */
 
 const TEMPO_DEFAULTS = {
@@ -2191,6 +2449,28 @@ const BOTTLE_LABELS = {
 };
 const ContentCardLinkyNewBouteilleEditor = makeEditor(BOTTLE_SCHEMA, BOTTLE_LABELS, BOTTLE_DEFAULTS);
 
+const PLEINS_SCHEMA = [
+  { name: "calendar", required: true, selector: { entity: { domain: "calendar" } } },
+  { name: "prefix", selector: { text: {} } },
+  { name: "car", selector: { text: {} } },
+  { name: "title", selector: { text: {} } },
+  { name: "months", selector: { number: { min: 3, max: 12, step: 1, mode: "box", unit_of_measurement: "mois" } } },
+  { name: "history", selector: { number: { min: 1, max: 20, step: 1, mode: "box" } } },
+  THEME_SELECT,
+  SCHEMA.find((s) => s.name === "font_size"),
+].filter(Boolean);
+const PLEINS_LABELS = {
+  calendar: "Calendrier où chaque plein est noté",
+  prefix: "Début du titre des événements (suivi du nom de la voiture)",
+  car: "Voiture affichée (vide : onglets pour toutes les voitures)",
+  title: "Titre",
+  months: "Mois dans le graphique des dépenses",
+  history: "Derniers pleins affichés",
+  theme: "Couleurs de la carte",
+  font_size: "Taille du texte",
+};
+const ContentCardLinkyNewPleinsEditor = makeEditor(PLEINS_SCHEMA, PLEINS_LABELS, PLEINS_DEFAULTS);
+
 /* ---------------------------------------------------------- enregistrement */
 
 if (typeof customElements !== "undefined") {
@@ -2208,6 +2488,8 @@ if (typeof customElements !== "undefined") {
   define("content-card-linky-new-gazpar-editor", ContentCardLinkyNewGazparEditor);
   define("content-card-linky-new-bouteille", ContentCardLinkyNewBouteille);
   define("content-card-linky-new-bouteille-editor", ContentCardLinkyNewBouteilleEditor);
+  define("content-card-linky-new-pleins", ContentCardLinkyNewPleins);
+  define("content-card-linky-new-pleins-editor", ContentCardLinkyNewPleinsEditor);
   window.customCards = window.customCards || [];
   const register = (type, name, description) => {
     if (!window.customCards.some((c) => c.type === type)) window.customCards.push({ type, name, description, preview: true });
@@ -2233,7 +2515,12 @@ if (typeof customElements !== "undefined") {
     "Carte Enedis Linky New · Bouteille de gaz",
     "Bouteille de gaz (butane, propane) : jours en service, gaz restant estimé, fin estimée, coût, historique des bouteilles.",
   );
+  register(
+    "content-card-linky-new-pleins",
+    "Carte Enedis Linky New · Pleins",
+    "Pleins de carburant par voiture (tag NFC) : kilomètres, consommation moyenne et par carburant, litres, budget par plein, jour, mois et année.",
+  );
   console.info(`%c CARTE-ENEDIS-LINKY-NEW %c ${CARD_VERSION} `, "background:#96d21f;color:#1a2434;font-weight:700", "background:#1d93e3;color:#fff");
 }
 
-if (typeof module !== "undefined") module.exports = { MED, GAS, BOTTLE };
+if (typeof module !== "undefined") module.exports = { MED, GAS, BOTTLE, PLEINS };
