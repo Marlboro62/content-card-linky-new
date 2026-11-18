@@ -28,7 +28,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.10.0";
+const CARD_VERSION = "0.11.0-beta.1";
 
 /* ---------------------------------------------------------------- données */
 
@@ -324,6 +324,15 @@ class ContentCardLinkyNew extends HTMLElement {
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this.shadowRoot.addEventListener("click", (ev) => {
+        // navigation jour par jour dans l'en-tête : ‹ jour plus ancien, › jour plus récent, « Hier » pour revenir
+        const nav = ev.target.closest("[data-nav]");
+        if (nav) {
+          if (nav.disabled) return;
+          const max = Math.max(0, (this._all?.length || 1) - 1), n = nav.dataset.nav;
+          this._selected = n === "prev" ? Math.min(max, this._selected + 1) : n === "next" ? Math.max(0, this._selected - 1) : 0;
+          this._render(true);
+          return;
+        }
         const t = ev.target.closest("[data-i]");
         if (!t) return;
         this._selected = Number(t.dataset.i);
@@ -427,16 +436,18 @@ class ContentCardLinkyNew extends HTMLElement {
     }
 
     const shown = all.slice(0, Math.max(1, Math.min(c.days, all.length)));
-    if (this._selected >= shown.length) this._selected = 0;
+    // le jour choisi peut être plus ancien que le graphique : la navigation parcourt tout l'historique disponible
+    this._all = all;
+    if (this._selected >= all.length) this._selected = 0;
 
     const pdl = (c.entity.match(/linky_(\d+)_/) || [])[1];
 
     this.shadowRoot.innerHTML = `${STYLE}<ha-card class="${mode}"${hcHpStyle(c)}>
       ${this._header(pdl)}
-      ${this._hero(all[0], a, prices)}
+      ${this._hero(all[this._selected], a, prices, all[this._selected + 1])}
       ${this._tiles(a, all)}
       ${this._chart(shown)}
-      ${this._selected > 0 ? this._detail(shown[this._selected]) : ""}
+      ${this._selected > 0 ? this._detail(all[this._selected]) : ""}
       ${c.show_power !== false ? this._power(shown) : ""}
       ${this._ecowatt()}
       ${this._footer(all, prices, hpPct)}
@@ -476,18 +487,27 @@ class ContentCardLinkyNew extends HTMLElement {
 
   /* ------------------------------------------------------------- hier */
 
-  _hero(day, a, prices) {
+  _hero(day, a, prices, prev) {
     if (!day) return "";
-    const total = MED.num(a.yesterday) ?? day.total;
-    const evo = MED.num(a.yesterday_evolution);
+    // hier : valeurs de MyElectricalData ; jour plus ancien : écart calculé avec sa veille
+    const latest = this._selected === 0;
+    const total = latest ? MED.num(a.yesterday) ?? day.total : day.total;
+    const evo = latest ? MED.num(a.yesterday_evolution)
+      : day.total !== null && prev?.total > 0 ? ((day.total - prev.total) / prev.total) * 100 : null;
     const split = day.hc !== null && day.hp !== null && day.hc + day.hp > 0;
     const hcPct = split ? (day.hc / (day.hc + day.hp)) * 100 : 0;
     const when = day.date ? day.date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : "Hier";
     return `<section class="hero">
       <div>
-        <div class="hero-l">${esc(cap(when))}</div>
+        <div class="day-nav">
+          <button class="nav-btn" data-nav="prev" title="Jour précédent" aria-label="Jour précédent"${this._selected >= (this._all?.length || 1) - 1 ? " disabled" : ""}>‹</button>
+          <span class="hero-l" title="${esc(cap(when))}">${esc(cap(latest ? when : day.date ? day.date.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) : when))}</span>
+          <button class="nav-btn" data-nav="next" title="Jour suivant" aria-label="Jour suivant"${latest ? " disabled" : ""}>›</button>
+          ${latest ? "" : `<button class="nav-btn nav-last" data-nav="last">Hier</button>`}
+        </div>
         <div class="hero-v">${fmt(total, 2)}<span>kWh</span></div>
         ${evo !== null ? `<div class="evo ${evo > 0 ? "up" : "down"}">${evo > 0 ? "+" : ""}${fmt(evo, 1)} % par rapport à la veille</div>` : ""}
+        ${!latest && prev && prev.total !== null ? `<div class="hero-p">Veille : ${fmt(prev.total, 2)} kWh${prev.cost !== null && prev.cost !== undefined ? ` · ${euro(prev.cost)}` : ""}</div>` : ""}
       </div>
       <div class="hero-r">
         ${
@@ -1720,6 +1740,13 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .hero { margin: 4px 12px 0; padding: 16px; border-radius: 14px; background: var(--med-surface);
   border: 1px solid var(--med-line); display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; }
 .hero-l { color: var(--med-muted); font-size: .85rem; }
+.day-nav { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
+.day-nav .hero-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.nav-btn { flex: none; border: 1px solid var(--med-line); background: var(--med-surface); color: var(--med-text); border-radius: 999px;
+  min-width: 30px; height: 28px; padding: 0 9px; font: inherit; font-size: .95rem; line-height: 1; cursor: pointer; }
+.nav-btn:hover:not([disabled]), .nav-btn:focus-visible { border-color: var(--med-blue); outline: none; }
+.nav-btn[disabled] { opacity: .35; cursor: default; }
+.nav-btn.nav-last { font-size: .72rem; color: var(--med-blue); padding: 0 8px; }
 .hero-v { font-size: 2.4rem; font-weight: 700; line-height: 1.1; }
 .hero-v span, .tile-v span { font-size: .9rem; font-weight: 500; color: var(--med-muted); margin-left: 4px; }
 .hero-r { text-align: right; align-self: center; }

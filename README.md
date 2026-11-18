@@ -85,6 +85,7 @@ Ces projets sont **non officiels**, maintenus par Marlboro62, sans lien avec l'�
 
 - la couleur Tempo d'aujourd'hui et de demain, et les jours restants par couleur ;
 - la consommation de la veille, son évolution, le coût estimé et la répartition HC / HP ;
+- la navigation jour par jour (‹ ›) pour remonter dans l'historique disponible, avec l'évolution par rapport à la veille de chaque jour (bouton « Hier » pour revenir) ;
 - le mois en cours, le mois dernier, l'année en cours et la part d'heures pleines, avec la comparaison à l'année précédente ; en option (`show_week`), la semaine en cours et la semaine dernière ;
 - un graphique des 7, 14 ou 31 derniers jours (HC et HP empilés, jours colorés selon Tempo) ; un clic sur un jour affiche son détail ;
 - la puissance maximale de la période, comparée à la puissance souscrite ;
