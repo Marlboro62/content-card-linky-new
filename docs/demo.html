@@ -197,9 +197,22 @@
       .map(([k, l]) => { const mon = parse(k), sun = new Date(mon); sun.setDate(mon.getDate() + 6); return { time_period: `Du ${k} au ${dd(sun)}`, ...sum(l) }; });
     const yearly = [...groups((x) => x.time_period.slice(6))].map(([k, l]) => ({ time_period: k, ...sum(l) }));
     return { attribution: "Données GRDF", username: "demo@example.org", pce: "GI000000000000", unit_of_measurement: "kWh", friendly_name: "Gazpar",
-      icon: "mdi:fire", device_class: "energy", state_class: "total_increasing", errorMessages: [], hourly: [], daily: daily.slice(-14), weekly, monthly, yearly }; // l'intégration ne garde que 14 relevés quotidiens
+      icon: "mdi:fire", device_class: "energy", state_class: "total_increasing", errorMessages: [], hourly: [], daily: daily.slice(-14), weekly, monthly, yearly, fullDaily: daily }; // l'intégration ne garde que 14 relevés quotidiens
   }
   let GAS_ATTRS = null; // calculé au premier affichage (round() est défini plus bas)
+  /** Statistiques long terme simulées (recorder/statistics_during_period, « change » par jour) :
+   *  comme dans Home Assistant, chaque relevé GRDF est compté le jour où il est reçu, deux jours plus tard. */
+  function demoWS(msg) {
+    if (msg.type !== "recorder/statistics_during_period") return Promise.reject(new Error(`${msg.type} non simulé`));
+    GAS_ATTRS = GAS_ATTRS || gazpar();
+    const from = new Date(msg.start_time).getTime();
+    const rows = GAS_ATTRS.fullDaily.map((x) => {
+      const [a, b, c] = x.time_period.split("/").map(Number);
+      const d = new Date(c, b - 1, a + 2);
+      return { start: d.getTime(), end: d.getTime() + 86400000, change: x.energy_kwh };
+    }).filter((r) => r.start >= from);
+    return Promise.resolve({ [msg.statistic_ids[0]]: rows });
+  }
   const PRICES = { blue: { hc: 0.1356, hp: 0.1654 }, white: { hc: 0.1536, hp: 0.1921 }, red: { hc: 0.1615, hp: 0.7295 } };
 
   const state = {
@@ -411,7 +424,7 @@
       frame.appendChild(card);
     }
     card.setConfig(c);
-    card.hass = { states: buildStates(), themes: { darkMode: state.page === "dark" }, language: "fr", locale: { language: "fr" } };
+    card.hass = { states: buildStates(), themes: { darkMode: state.page === "dark" }, language: "fr", locale: { language: "fr" }, callWS: demoWS };
   }
 
   document.querySelectorAll(".seg").forEach((seg) => {

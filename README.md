@@ -270,7 +270,9 @@ price: 0.105
 |---|---|---|
 | `entity` | obligatoire | Capteur Gazpar, `sensor.gazpar` par défaut |
 | `title` | `Gazpar` | Titre affiché |
-| `days` | `14` | Historique du graphique : `7` ou `14` relevés. L'intégration home-assistant-gazpar ne garde que les 14 derniers relevés quotidiens dans ses attributs : une valeur plus grande affiche ces 14 relevés, avec une note sous le graphique |
+| `days` | `14` | Historique du graphique : `7`, `14` ou `31` jours. L'intégration home-assistant-gazpar ne garde que les 14 derniers relevés quotidiens dans ses attributs : au-delà, la carte complète avec les statistiques long terme (voir `statistics`) |
+| `statistics` | `true` | **Bêta.** Au-delà des 14 relevés de l'attribut `daily`, compléter le graphique avec la variation quotidienne des statistiques long terme de Home Assistant (barres claires). Avec le capteur de l'intégration, ces statistiques sont datées du jour où Home Assistant a reçu les relevés GRDF (1 à 3 jours de retard, parfois par paquets) : les barres peuvent être décalées ou irrégulières. `false` pour s'en tenir aux 14 relevés |
+| `statistic_id` | le capteur | Statistique à lire à la place de celle du capteur, par exemple l'énergie importée par [Gazpar2HAWS](https://github.com/ssenart/gazpar2haws), datée au jour du relevé GRDF |
 | `price` | aucun | Prix du kWh de gaz en €/kWh, pour estimer le coût (hors abonnement) |
 | `theme` | `v2` | `v2`, `auto` ou `ha`, comme la carte de consommation |
 | `show_pce` | `true` | Afficher le numéro de PCE sous le titre |
