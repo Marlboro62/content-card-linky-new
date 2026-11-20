@@ -28,7 +28,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.11.1-beta.1";
+const CARD_VERSION = "0.11.1-beta.2";
 
 /* ---------------------------------------------------------------- données */
 
@@ -1336,10 +1336,12 @@ class ContentCardLinkyNewGazpar extends HTMLElement {
       return `<button class="day ${d.i === this._selected ? "on" : ""}" data-i="${d.i}"><span>${name}</span><b>${d.date ? d.date.getDate() : ""}</b></button>`;
     }).join("");
     const anyEst = chrono.some((d) => GAS.est(d));
+    const want = this._config.days;
     return `<section class="chart">
       <div class="chart-h"><span>${n} derniers relevés</span><span class="legend"><i class="k-gas"></i>Consommation${anyEst ? '<i class="k-gas est"></i>Estimée' : ""}</span></div>
       <svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" role="img" aria-label="Consommation de gaz des ${n} derniers jours">${bars}</svg>
       <div class="days" style="grid-template-columns:repeat(${n},1fr)">${labels}</div>
+      ${want > n ? `<div class="gas-note">${want} relevés demandés, ${n} disponibles : l'intégration home-assistant-gazpar ne garde que les derniers relevés quotidiens dans ses attributs (14 au plus).</div>` : ""}
     </section>`;
   }
 
@@ -1375,6 +1377,7 @@ ha-card.gas.light { --med-gas: #d4630f; --med-gas-core: #e0a10a; }
 .peak span { font-size: .85rem; font-weight: 500; color: var(--med-muted); margin-left: 3px; }
 .chart rect.gasb { fill: var(--med-gas); } .chart rect.gasb.est { opacity: .45; }
 .legend .k-gas { background: var(--med-gas); } .legend .k-gas.est { opacity: .45; }
+.gas-note { margin: 6px 4px 0; font-size: .75rem; color: var(--med-muted); }
 .gas-err { margin: 10px 12px 0; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--t-red); font-size: .8rem; }
 .empty a { color: var(--med-accent, var(--med-blue)); }
 </style>`;
@@ -2198,10 +2201,15 @@ const TEMPO_LABELS = {
 };
 const ContentCardLinkyNewTempoEditor = makeEditor(TEMPO_SCHEMA, TEMPO_LABELS, TEMPO_DEFAULTS);
 
+// home-assistant-gazpar ne garde que les 14 derniers relevés quotidiens dans ses attributs
+const GAS_DAYS_SELECT = {
+  name: "days",
+  selector: { select: { mode: "dropdown", options: [{ value: "7", label: "7 relevés" }, { value: "14", label: "14 relevés" }] } },
+};
 const GAS_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "sensor" } } },
   { name: "title", selector: { text: {} } },
-  DAYS_SELECT,
+  GAS_DAYS_SELECT,
   { name: "price", selector: { number: { min: 0, max: 1, step: 0.0001, mode: "box", unit_of_measurement: "€/kWh" } } },
   THEME_SELECT,
   { name: "show_pce", selector: { boolean: {} } },
