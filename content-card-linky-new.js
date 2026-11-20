@@ -623,7 +623,10 @@ class ContentCardLinkyNew extends HTMLElement {
   _chart(days) {
     const chrono = days.map((d, i) => ({ ...d, i })).reverse();
     const n = chrono.length;
-    const max = Math.max(1, ...chrono.map((d) => d.total || 0)) * 1.08;
+    // Échelle sur la hauteur réellement dessinée : HC + HP peut dépasser le total « daily »
+    // (sources MyElectricalData différentes), sinon la barre empilée sort du graphique (#23)
+    const drawn = (d) => (d.hc !== null && d.hp !== null ? d.hc + d.hp : d.est ? d.est.hc + d.est.hp : d.total || 0);
+    const max = Math.max(1, ...chrono.map(drawn)) * 1.08;
     const H = 100;
     const slot = 100 / n;
     const w = slot * 0.62;
