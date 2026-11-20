@@ -270,7 +270,7 @@ price: 0.105
 |---|---|---|
 | `entity` | obligatoire | Capteur Gazpar, `sensor.gazpar` par défaut |
 | `title` | `Gazpar` | Titre affiché |
-| `days` | `14` | Historique du graphique : `7`, `14` ou `31` relevés |
+| `days` | `14` | Historique du graphique : `7` ou `14` relevés. L'intégration home-assistant-gazpar ne garde que les 14 derniers relevés quotidiens dans ses attributs : une valeur plus grande affiche ces 14 relevés, avec une note sous le graphique |
 | `price` | aucun | Prix du kWh de gaz en €/kWh, pour estimer le coût (hors abonnement) |
 | `theme` | `v2` | `v2`, `auto` ou `ha`, comme la carte de consommation |
 | `show_pce` | `true` | Afficher le numéro de PCE sous le titre |

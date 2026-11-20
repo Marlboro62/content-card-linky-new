@@ -173,7 +173,7 @@
   const ENTITY = `sensor.linky_${PDL}_consumption`;
   const PROD_ENTITY = `sensor.linky_${PDL}_production`;
   const GAS_ENTITY = "sensor.gazpar";
-  /** Relevés Gazpar simulés (400 jours, du plus ancien au plus récent, comme l'intégration home-assistant-gazpar) */
+  /** Relevés Gazpar simulés (400 jours pour les cumuls, du plus ancien au plus récent ; seuls les 14 derniers sont exposés en quotidien, comme l'intégration home-assistant-gazpar) */
   function gazpar() {
     const MOIS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
     const dd = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
@@ -197,7 +197,7 @@
       .map(([k, l]) => { const mon = parse(k), sun = new Date(mon); sun.setDate(mon.getDate() + 6); return { time_period: `Du ${k} au ${dd(sun)}`, ...sum(l) }; });
     const yearly = [...groups((x) => x.time_period.slice(6))].map(([k, l]) => ({ time_period: k, ...sum(l) }));
     return { attribution: "Données GRDF", username: "demo@example.org", pce: "GI000000000000", unit_of_measurement: "kWh", friendly_name: "Gazpar",
-      icon: "mdi:fire", device_class: "energy", state_class: "total_increasing", errorMessages: [], hourly: [], daily, weekly, monthly, yearly };
+      icon: "mdi:fire", device_class: "energy", state_class: "total_increasing", errorMessages: [], hourly: [], daily: daily.slice(-14), weekly, monthly, yearly }; // l'intégration ne garde que 14 relevés quotidiens
   }
   let GAS_ATTRS = null; // calculé au premier affichage (round() est défini plus bas)
   const PRICES = { blue: { hc: 0.1356, hp: 0.1654 }, white: { hc: 0.1536, hp: 0.1921 }, red: { hc: 0.1615, hp: 0.7295 } };
