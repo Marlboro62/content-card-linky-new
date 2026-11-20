@@ -28,7 +28,7 @@
  * L'ancien type custom:content-card-linky-v2 reste reconnu (tableaux de bord existants).
  */
 
-const CARD_VERSION = "0.11.1-beta.2";
+const CARD_VERSION = "0.12.0-beta.1";
 
 /* ---------------------------------------------------------------- données */
 
@@ -1164,11 +1164,23 @@ const GAS = {
   },
   /** Le jour est-il une estimation (relevé manquant) plutôt qu'une mesure ? */
   est(d) { return /estim/i.test(d.type || ""); },
+  /** Réponse de recorder/statistics_during_period (période « day », type « change ») -> jours,
+   *  du plus récent au plus ancien. « start » est en millisecondes (HA récent), en secondes ou en ISO. */
+  stats(list) {
+    return GAS.list(list).map((s) => {
+      let t = typeof s.start === "number" ? s.start : Date.parse(s.start);
+      if (Number.isFinite(t) && t < 1e12) t *= 1000;
+      const date = new Date(t);
+      date.setHours(0, 0, 0, 0);
+      return { date, kwh: GAS.num(s.change), m3: null, start: null, end: null, factor: null, temp: null, type: "", stat: true };
+    }).filter((d) => Number.isFinite(d.date.getTime()) && d.kwh !== null).sort((x, y) => y.date - x.date);
+  },
 };
 
 const GAS_DEFAULTS = {
   title: "Gazpar",
   days: 14,
+  statistics: true,
   price: null,
   show_pce: true,
   theme: "v2",
@@ -1194,6 +1206,9 @@ class ContentCardLinkyNewGazpar extends HTMLElement {
     this._config = { ...GAS_DEFAULTS, ...config, days: Number(config.days || GAS_DEFAULTS.days) };
     this._selected = 0;
     this._sig = null;
+    this._stats = null;
+    this._statsKey = null;
+    this._statsError = null;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this.shadowRoot.addEventListener("click", (ev) => {
@@ -1220,6 +1235,42 @@ class ContentCardLinkyNewGazpar extends HTMLElement {
     return p;
   }
 
+  /** Statistiques long terme du recorder (variation quotidienne de l'énergie), pour les jours que
+   *  l'attribut daily ne contient plus. Relues quand le capteur change ou le lendemain. */
+  _loadStats(st) {
+    const c = this._config, hass = this._hass;
+    if (c.statistics === false || typeof hass?.callWS !== "function") return;
+    const id = c.statistic_id || c.entity;
+    const key = `${id}|${c.days}|${st?.last_updated || "-"}|${new Date().toDateString()}`;
+    if (key === this._statsKey) return;
+    this._statsKey = key;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - c.days - 7);
+    hass.callWS({
+      type: "recorder/statistics_during_period", start_time: start.toISOString(), end_time: new Date().toISOString(),
+      statistic_ids: [id], period: "day", types: ["change"], units: { energy: "kWh" },
+    }).then((r) => {
+      if (key !== this._statsKey) return;
+      this._stats = GAS.stats(r?.[id]);
+      this._statsError = this._stats.length ? null : `aucune statistique pour ${id}`;
+      this._render(true);
+    }).catch((e) => {
+      if (key !== this._statsKey) return;
+      this._stats = null;
+      this._statsError = e?.message || String(e);
+      this._render(true);
+    });
+  }
+
+  /** Relevés de l'attribut daily, complétés par les statistiques pour les jours plus anciens. */
+  _series(days) {
+    const c = this._config;
+    if (days.length >= c.days || c.statistics === false || !this._stats) return days;
+    const oldest = days.length ? days[days.length - 1].date : null;
+    return days.concat(this._stats.filter((s) => !oldest || s.date < oldest));
+  }
+
   _render(force) {
     if (!this._config || !this._hass || !this.shadowRoot) return;
     const c = this._config;
@@ -1237,7 +1288,9 @@ class ContentCardLinkyNewGazpar extends HTMLElement {
     }
     const a = st.attributes || {};
     const data = GAS.parse(a);
-    const shown = data.days.slice(0, Math.max(1, Math.min(c.days, data.days.length)));
+    if (data.days.length < c.days) this._loadStats(st);
+    const series = this._series(data.days);
+    const shown = series.slice(0, Math.max(1, Math.min(c.days, series.length)));
     if (this._selected >= shown.length) this._selected = 0;
     const errors = [].concat(a.errorMessages || a.error_messages || []).filter(Boolean);
     const body = data.days.length
@@ -1328,7 +1381,7 @@ class ContentCardLinkyNewGazpar extends HTMLElement {
       const x = k * slot + (slot - w) / 2;
       const sel = d.i === this._selected ? `<rect class="sel" x="${k * slot}" y="0" width="${slot}" height="${H}"/>` : "";
       const h = d.kwh !== null ? (d.kwh / max) * H : 0;
-      const bar = d.kwh !== null ? `<rect class="gasb${GAS.est(d) ? " est" : ""}" x="${x}" y="${H - h}" width="${w}" height="${h}"/>` : "";
+      const bar = d.kwh !== null ? `<rect class="gasb${GAS.est(d) ? " est" : ""}${d.stat ? " stat" : ""}" x="${x}" y="${H - h}" width="${w}" height="${h}"/>` : "";
       return `${sel}${bar}<rect class="hit" data-i="${d.i}" x="${k * slot}" y="0" width="${slot}" height="${H}"/>`;
     }).join("");
     const labels = chrono.map((d) => {
@@ -1336,12 +1389,23 @@ class ContentCardLinkyNewGazpar extends HTMLElement {
       return `<button class="day ${d.i === this._selected ? "on" : ""}" data-i="${d.i}"><span>${name}</span><b>${d.date ? d.date.getDate() : ""}</b></button>`;
     }).join("");
     const anyEst = chrono.some((d) => GAS.est(d));
-    const want = this._config.days;
+    const nStat = chrono.filter((d) => d.stat).length;
+    const c = this._config, want = c.days;
+    const notes = [];
+    if (nStat) {
+      notes.push(`Les ${nStat} jours les plus anciens (barres claires) viennent des statistiques long terme de Home Assistant${c.statistic_id ? ` (${esc(c.statistic_id)})` : ""}.`
+        + (c.statistic_id ? "" : " Elles sont datées du jour où Home Assistant a reçu les relevés GRDF, qui arrivent avec 1 à 3 jours de retard et parfois par paquets : ces barres peuvent être décalées ou irrégulières."));
+    }
+    if (want > n) {
+      const why = c.statistics === false ? "complément par les statistiques désactivé"
+        : this._statsError ? `statistiques indisponibles : ${esc(this._statsError)}` : this._stats ? "pas de statistiques plus anciennes" : "lecture des statistiques…";
+      notes.push(`${want} jours demandés, ${n} disponibles : l'intégration home-assistant-gazpar ne garde que les 14 derniers relevés quotidiens dans ses attributs (${why}).`);
+    }
     return `<section class="chart">
-      <div class="chart-h"><span>${n} derniers relevés</span><span class="legend"><i class="k-gas"></i>Consommation${anyEst ? '<i class="k-gas est"></i>Estimée' : ""}</span></div>
+      <div class="chart-h"><span>${n} derniers ${nStat ? "jours" : "relevés"}</span><span class="legend"><i class="k-gas"></i>Consommation${anyEst ? '<i class="k-gas est"></i>Estimée' : ""}${nStat ? '<i class="k-gas stat"></i>Statistiques HA' : ""}</span></div>
       <svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" role="img" aria-label="Consommation de gaz des ${n} derniers jours">${bars}</svg>
       <div class="days" style="grid-template-columns:repeat(${n},1fr)">${labels}</div>
-      ${want > n ? `<div class="gas-note">${want} relevés demandés, ${n} disponibles : l'intégration home-assistant-gazpar ne garde que les derniers relevés quotidiens dans ses attributs (14 au plus).</div>` : ""}
+      ${notes.map((t) => `<div class="gas-note">${t}</div>`).join("")}
     </section>`;
   }
 
@@ -1352,7 +1416,8 @@ class ContentCardLinkyNewGazpar extends HTMLElement {
     if (d.m3 !== null) parts.push(`${fmt(d.m3, 2)} m³`);
     if (price !== null && d.kwh !== null) parts.push(`≈ ${euro(d.kwh * price)}`);
     if (d.temp !== null) parts.push(`${fmt(d.temp, 1)} °C`);
-    const more = [d.start !== null && d.end !== null ? `Index ${fmt(d.start, 0)} → ${fmt(d.end, 0)} m³` : "", d.factor !== null ? `coefficient ${fmt(d.factor, 2)} kWh/m³` : "", d.type ? d.type.toLowerCase() : ""].filter(Boolean);
+    const more = [d.start !== null && d.end !== null ? `Index ${fmt(d.start, 0)} → ${fmt(d.end, 0)} m³` : "", d.factor !== null ? `coefficient ${fmt(d.factor, 2)} kWh/m³` : "", d.type ? d.type.toLowerCase() : "",
+      d.stat ? (this._config.statistic_id ? "statistiques long terme de Home Assistant" : "statistiques long terme de Home Assistant, datées à la réception des relevés GRDF") : ""].filter(Boolean);
     return `<section class="detail">
       <div class="detail-h"><span>${esc(longDay(d.date))}</span></div>
       <div class="detail-v">${parts.join('<span class="sep"></span>')}</div>
@@ -1375,8 +1440,8 @@ ha-card.gas.light { --med-gas: #d4630f; --med-gas-core: #e0a10a; }
 .brand .flame { fill: var(--med-gas); } .brand .core { fill: var(--med-gas-core); }
 .peak { font-size: 1.6rem; font-weight: 700; color: var(--med-gas); }
 .peak span { font-size: .85rem; font-weight: 500; color: var(--med-muted); margin-left: 3px; }
-.chart rect.gasb { fill: var(--med-gas); } .chart rect.gasb.est { opacity: .45; }
-.legend .k-gas { background: var(--med-gas); } .legend .k-gas.est { opacity: .45; }
+.chart rect.gasb { fill: var(--med-gas); } .chart rect.gasb.est { opacity: .45; } .chart rect.gasb.stat { opacity: .6; fill: var(--med-gas-core); }
+.legend .k-gas { background: var(--med-gas); } .legend .k-gas.est { opacity: .45; } .legend .k-gas.stat { opacity: .6; background: var(--med-gas-core); }
 .gas-note { margin: 6px 4px 0; font-size: .75rem; color: var(--med-muted); }
 .gas-err { margin: 10px 12px 0; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--t-red); font-size: .8rem; }
 .empty a { color: var(--med-accent, var(--med-blue)); }
@@ -2201,15 +2266,20 @@ const TEMPO_LABELS = {
 };
 const ContentCardLinkyNewTempoEditor = makeEditor(TEMPO_SCHEMA, TEMPO_LABELS, TEMPO_DEFAULTS);
 
-// home-assistant-gazpar ne garde que les 14 derniers relevés quotidiens dans ses attributs
+// home-assistant-gazpar ne garde que les 14 derniers relevés quotidiens dans ses attributs :
+// au-delà, la carte complète avec les statistiques long terme de Home Assistant.
 const GAS_DAYS_SELECT = {
   name: "days",
-  selector: { select: { mode: "dropdown", options: [{ value: "7", label: "7 relevés" }, { value: "14", label: "14 relevés" }] } },
+  selector: { select: { mode: "dropdown", options: [
+    { value: "7", label: "7 jours" }, { value: "14", label: "14 jours" }, { value: "31", label: "31 jours (complété par les statistiques)" },
+  ] } },
 };
 const GAS_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "sensor" } } },
   { name: "title", selector: { text: {} } },
   GAS_DAYS_SELECT,
+  { name: "statistics", selector: { boolean: {} } },
+  { name: "statistic_id", selector: { statistic: {} } },
   { name: "price", selector: { number: { min: 0, max: 1, step: 0.0001, mode: "box", unit_of_measurement: "€/kWh" } } },
   THEME_SELECT,
   { name: "show_pce", selector: { boolean: {} } },
@@ -2219,6 +2289,8 @@ const GAS_LABELS = {
   entity: "Compteur Gazpar (sensor.gazpar de l'intégration home-assistant-gazpar)",
   title: "Titre",
   days: "Historique affiché",
+  statistics: "Au-delà de 14 jours, compléter avec les statistiques long terme (bêta)",
+  statistic_id: "Statistique à lire (facultatif, par défaut celle du compteur ; par exemple celle de Gazpar2HAWS)",
   price: "Prix du kWh de gaz, pour estimer le coût (facultatif)",
   theme: "Couleurs de la carte",
   show_pce: "Afficher le numéro de PCE",
